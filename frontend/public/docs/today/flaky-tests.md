@@ -36,7 +36,9 @@ The page shows the project selected at the top of the sidebar. The tests are lis
 
 ## 1. The summary line
 
-Under the heading, for example *"1 of 3 tests pass and fail under the same conditions (score ≥ 33%) · 0 quarantined"*: how many of the tests in the list are flaky (a flake score of 33% or more, the same line as *Flake trends*; mostly stable tests are listed too), and how many are quarantined right now.
+Under the heading, for example *"1 flaky test (score ≥ 33%) · 1 quarantined"*: how many tests in the project are flaky (a flake score of 33% or more, the same line as *Flake trends*), and how many are quarantined right now.
+
+The list shows only flaky tests and quarantined ones. Stable tests are hidden; the **Show N stable tests** button on the right of the heading adds them to the list, and **Hide stable tests** takes them away again.
 
 ## 2. The list of tests
 
@@ -147,7 +149,8 @@ A quarantine that has ended shows Quarantine expired; a test that is not quarant
 
 - **TraceIQ quarantines on its own, too.** When a test reaches a score of 40% or more over at least 6 results and isn't quarantined, it is quarantined automatically for 14 days. Its reason then starts with "auto:", for example "auto: flake score 0.45 over 12 runs". An automatic quarantine is lifted by itself if the score drops below 15%; one that a person set never is.
 - **An ended quarantine is never renewed by itself.** The test runs again, and only a person can quarantine it again.
-- **The list isn't only flaky tests.** Every test that has run gets a score, so in a project with history the list also holds stable tests at 0%, and the summary line counts them too. Look at the score and colour, not just at whether a test is listed.
+- **Stable tests are hidden, not missing.** Every test that has run gets a score. The list shows a test once its score reaches 33%, or while it has a quarantine (also one that has ended and needs a decision), whatever its score. **Show N stable tests** lists the rest.
+- **Deleting runs clears scores.** When the last result of a test is deleted, its score goes too, unless the test is quarantined or has an owner: those are someone's decision and stay.
 - **Tests are matched by name.** The score and the failure count follow the test's name within the project; two tests with the same name are counted together.
 - **A quarantine shows up elsewhere.** *Release readiness* lists the active quarantines, with owner and end date, and can be set to refuse a release when too many tests are quarantined or score 40% or more.
 - **Who can do what.** Anyone with access to the project can look. Quarantining, releasing and changing the owner need the *editor* role, and every one of them is written to the audit log.

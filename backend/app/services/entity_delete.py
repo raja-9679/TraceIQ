@@ -360,6 +360,7 @@ class DeleteReport:
     object_keys: List[str] = field(default_factory=list)
     objects_deleted: int = 0
     object_errors: List[str] = field(default_factory=list)
+    pruned: Dict[str, int] = field(default_factory=dict)  # derived_prune, async path
 
     @property
     def total_rows(self) -> int:
@@ -563,8 +564,20 @@ async def cascade_delete(session, root: str, ids: Iterable[int]) -> DeleteReport
         # Uploaded HARs (WP15d): the prefix is derived from the project id.
         from app.services.har_files import project_prefix
         build_keys.extend(project_prefix(pid) for pid in sorted(set(ids)))
+    # Run-derived summaries (failure groups, flake scores/trends, dependency
+    # health) are judged after the rows go; a project delete takes them all.
+    project_ids: Set[int] = set()
+    if root in ("testrun", "testsuite", "testcase") and ids:
+        table = _metadata().tables[root]
+        for chunk in _chunks(ids):
+            result = await conn.execute(
+                sa.select(table.c.project_id).distinct().where(_pk(table).in_(chunk)))
+            project_ids.update(p for p in result.scalars().all() if p is not None)
     report = await _drive_async(_cascade(root, ids), conn)
     report.object_keys.extend(build_keys)
+    if project_ids:
+        from app.services.derived_prune import prune_after_delete
+        report.pruned = await prune_after_delete(conn, project_ids)
     logger.info("[delete] %s %s: %d rows, %d nullified, %d object keys",
                 root, report.root_ids, report.total_rows,
                 sum(report.nullified.values()), len(report.object_keys))

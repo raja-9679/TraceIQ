@@ -55,3 +55,14 @@ export function attemptsOf(result: { result_payload?: unknown }): RetryAttempt[]
   const attempts = (result.result_payload as { attempts?: unknown } | null | undefined)?.attempts;
   return Array.isArray(attempts) ? (attempts as RetryAttempt[]) : [];
 }
+
+/** The line the bars, the count and Flake trends use (flake_patterns.FLAKY_SCORE). */
+export const FLAKY_SCORE = 0.33;
+
+/** Whether a test belongs on the Flaky tests list: flaky by score, or under a
+ * quarantine (active, or expired and waiting for a decision) whatever its
+ * score. Every case with run history has a record, so without this the list
+ * is mostly stable tests. */
+export function isListedFlake(e: Pick<FlakinessEntry, 'flake_score' | 'quarantine_state'>): boolean {
+    return e.quarantine_state !== 'none' || e.flake_score >= FLAKY_SCORE;
+}

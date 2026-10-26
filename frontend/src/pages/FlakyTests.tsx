@@ -6,14 +6,13 @@ import { toast } from 'sonner';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { flakesApi, FlakinessEntry } from '@/api/flakes';
 import { FlakeOwnerSelect, QuarantineDialog } from '@/components/flakes/FlakeControls';
-import { errorDetail, quarantineSummary } from '@/components/flakes/flakeHelpers';
+import { errorDetail, FLAKY_SCORE, isListedFlake, quarantineSummary } from '@/components/flakes/flakeHelpers';
 import {
     DetailCard, EmptyState, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
 import { cn } from '@/lib/utils';
 
 const pctOf = (score: number) => Math.round(Math.max(0, Math.min(1, score)) * 100);
-const FLAKY_SCORE = 0.33;
 const barColour = (score: number) => (score >= 0.66 ? 'bg-[#E0603A]' : score >= FLAKY_SCORE ? 'bg-[#F2C94C]' : 'bg-[#8FD3B6]');
 
 // ---------------------------------------------------------------------------
@@ -157,6 +156,7 @@ function FlakeDetail({ entry, projectId }: { entry: FlakinessEntry; projectId: n
 export default function FlakyTests() {
     const projectId = useActiveProjectId();
     const [selectedId, setSelectedId] = useState<number | null>(null);
+    const [showStable, setShowStable] = useState(false);
 
     const { data: entries, isLoading, error } = useQuery({
         queryKey: ['flakiness', projectId],
@@ -164,7 +164,11 @@ export default function FlakyTests() {
         enabled: !!projectId,
     });
 
-    const list = [...(entries ?? [])].sort((a, b) => b.flake_score - a.flake_score);
+    const all = [...(entries ?? [])].sort((a, b) => b.flake_score - a.flake_score);
+    // Every test with run history has a record; only flaky or quarantined
+    // ones are listed unless the viewer asks for the stable ones too.
+    const stableCount = all.filter((e) => !isListedFlake(e)).length;
+    const list = showStable ? all : all.filter(isListedFlake);
     const groups = [
         { name: 'Needs a decision', items: list.filter((e) => e.quarantine_state === 'expired') },
         { name: 'Still in runs', items: list.filter((e) => e.quarantine_state === 'none') },
@@ -172,10 +176,9 @@ export default function FlakyTests() {
     ].filter((g) => g.items.length > 0);
     const selected = list.find((e) => e.test_case_id === selectedId) ?? groups[0]?.items[0] ?? null;
     const quarantined = list.filter((e) => e.quarantine_state === 'active').length;
-    // The list includes every test with history, stable ones too. Count as
-    // flaky the same line the bars and Flake trends use (score >= 0.33,
+    // Flaky = the line the bars and Flake trends use (score >= 0.33,
     // flake_patterns.FLAKY_SCORE; the gate's 0.4 is a separate, stricter line).
-    const flakyCount = list.filter((e) => e.flake_score >= FLAKY_SCORE).length;
+    const flakyCount = all.filter((e) => e.flake_score >= FLAKY_SCORE).length;
 
     return (
         <div className="flex flex-col gap-5">
@@ -183,9 +186,14 @@ export default function FlakyTests() {
                 title="Flaky tests"
                 subtitle={
                     !projectId ? 'Pick a project in the sidebar.'
-                        : entries ? `${flakyCount} of ${list.length} test${list.length === 1 ? '' : 's'} pass and fail under the same conditions (score ≥ ${Math.round(FLAKY_SCORE * 100)}%) · ${quarantined} quarantined`
+                        : entries ? `${flakyCount} flaky test${flakyCount === 1 ? '' : 's'} (score ≥ ${Math.round(FLAKY_SCORE * 100)}%) · ${quarantined} quarantined`
                             : 'Tests that pass and fail under the same conditions. Quarantine them so they stop blocking runs.'
                 }
+                actions={stableCount > 0 ? (
+                    <Button variant="outline" size="sm" onClick={() => { setShowStable((v) => !v); setSelectedId(null); }}>
+                        {showStable ? 'Hide stable tests' : `Show ${stableCount} stable test${stableCount === 1 ? '' : 's'}`}
+                    </Button>
+                ) : undefined}
             />
 
             {!projectId ? (
@@ -199,6 +207,7 @@ export default function FlakyTests() {
             ) : list.length === 0 ? (
                 <EmptyState title="No flaky tests found">
                     When a test's retries show it passing and failing under the same conditions, it appears here with a flake score so you can quarantine it.
+                    {stableCount > 0 && ` ${stableCount} test${stableCount === 1 ? ' has' : 's have'} run history and look${stableCount === 1 ? 's' : ''} stable.`}
                 </EmptyState>
             ) : (
                 <SplitView

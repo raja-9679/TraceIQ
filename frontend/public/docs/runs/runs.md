@@ -87,6 +87,7 @@ Shows only runs with one result. Each button matches exactly one status:
 - Select runs with their tick boxes (or **Select all on this page**) and a **Delete N selected** button appears at the top.
 - **More → Delete all runs** deletes every run in every project where you are an editor, whatever the search or filters show. Use it with care.
 - Deleting removes the run with its screenshots, videos and logs, and asks you to confirm first. It is recorded in the audit log.
+- What was worked out from deleted runs goes with them once nothing else supports it: failure groups on *Failure triage* with no failure left, flake scores of tests with no result left (a quarantined or owned test keeps its score), and the days on *Flake trends* and *Dependency health* that no remaining run covers.
 - At the bottom, the page controls move through the list, and set how many runs a page shows (25, 50 or 100).
 
 ![Showing 1–50 of the runs, a 50 / page menu, and buttons for the first, previous, next and last page](../media/runs/runs/pagination.png)

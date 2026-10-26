@@ -19,7 +19,7 @@ test('Today › Flaky tests', async ({ page, browser }) => {
     await page.screenshot({ path: out(`${DIR}/page.png`) });
 
     // 2. Its parts, numbered (the guide explains each number).
-    const subtitle = main.getByText(/pass and fail under the same conditions.*·/);
+    const subtitle = main.getByText(/flaky tests? \(score ≥ \d+%\) ·/);
     const list = main.locator('section').filter({ has: page.getByRole('button', { pressed: true }) }).first();
     const score = detail.getByText('Flake score', { exact: true }).locator('xpath=ancestor::div[contains(@class,"flex-col")][1]');
     const facts = detail.getByText('Runs sampled', { exact: true }).locator('xpath=ancestor::div[contains(@class,"grid")][1]');

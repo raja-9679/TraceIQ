@@ -69,10 +69,12 @@
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="summary" data-toc="① The summary line">The summary line</h2></div>
-        <p>Under the heading, for example <em>"1 of 3 tests pass and fail under the same conditions (score ≥ 33%) · 0
-          quarantined"</em>: how many of the tests in the list are flaky (a flake score of 33% or
-          more, the same line as <em>Flake trends</em>; mostly stable tests are listed too), and how
-          many are quarantined right now.</p>
+        <p>Under the heading, for example <em>"1 flaky test (score ≥ 33%) · 1 quarantined"</em>: how
+          many tests in the project are flaky (a flake score of 33% or more, the same line as
+          <em>Flake trends</em>), and how many are quarantined right now.</p>
+        <p>The list shows only flaky tests and quarantined ones. Stable tests are hidden; the
+          <strong>Show N stable tests</strong> button on the right of the heading adds them to the
+          list, and <strong>Hide stable tests</strong> takes them away again.</p>
 
         <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The list of tests">The list of tests</h2></div>
         <figure>
@@ -216,7 +218,8 @@
         <ul>
           <li><strong>TraceIQ quarantines on its own, too.</strong> When a test reaches a score of 40% or more over at least 6 results and isn't quarantined, it is quarantined automatically for 14 days. Its reason then starts with "auto:", for example "auto: flake score 0.45 over 12 runs". An automatic quarantine is lifted by itself if the score drops below 15%; one that a person set never is.</li>
           <li><strong>An ended quarantine is never renewed by itself.</strong> The test runs again, and only a person can quarantine it again.</li>
-          <li><strong>The list isn't only flaky tests.</strong> Every test that has run gets a score, so in a project with history the list also holds stable tests at 0%, and the summary line counts them too. Look at the score and colour, not just at whether a test is listed.</li>
+          <li><strong>Stable tests are hidden, not missing.</strong> Every test that has run gets a score. The list shows a test once its score reaches 33%, or while it has a quarantine (also one that has ended and needs a decision), whatever its score. <strong>Show N stable tests</strong> lists the rest.</li>
+          <li><strong>Deleting runs clears scores.</strong> When the last result of a test is deleted, its score goes too, unless the test is quarantined or has an owner: those are someone's decision and stay.</li>
           <li><strong>Tests are matched by name.</strong> The score and the failure count follow the test's name within the project; two tests with the same name are counted together.</li>
           <li><strong>A quarantine shows up elsewhere.</strong> <em>Release readiness</em> lists the active quarantines, with owner and end date, and can be set to refuse a release when too many tests are quarantined or score 40% or more.</li>
           <li><strong>Who can do what.</strong> Anyone with access to the project can look. Quarantining, releasing and changing the owner need the <em>editor</em> role, and every one of them is written to the audit log.</li>
