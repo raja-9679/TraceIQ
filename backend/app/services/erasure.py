@@ -50,6 +50,8 @@ PERSONAL_TABLES: Dict[str, str] = {
     # given to them. Messages before conversations (FK order).
     "assistantmessage": "user_id",
     "assistantconversation": "user_id",
+    # The person's own bell: nobody else's record.
+    "notification": "user_id",
 }
 
 # Authorship columns. Left pointing at the scrubbed row: these are the
@@ -102,6 +104,13 @@ RETAINED_AUTHORSHIP: List[str] = [
     # WP16d: a rating of an AI hypothesis is part of the project's reviewed
     # sample (the accuracy figure); it holds a verdict, no text about anyone.
     "hypothesisfeedback.user_id",
+    # Failure discussion: the thread and who was asked to look are the
+    # project's working record. The scrubbed author shows as a former member;
+    # an assignment to them stays visible so it can be given to someone else.
+    "resultcomment.author_id", "resultassignment.assignee_id",
+    "resultassignment.assigned_by_id", "resultassignment.done_by_id",
+    # Who caused someone ELSE's notification (the row belongs to its reader).
+    "notification.actor_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {

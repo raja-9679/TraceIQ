@@ -133,6 +133,15 @@ PURGE_PLAN: List[PurgeStep] = [
     # WP16c: repair accept/reject/validation history (soft refs only).
     PurgeStep("repairoutcome", f"DELETE FROM repairoutcome WHERE project_id IN ({_PROJECTS})"),
     # WP16d: votes on failure-analysis hypotheses (soft run/result refs).
+    # Failure discussion (2026-11): comments, assignments and the
+    # notifications about them all hang off the project (and the run).
+    PurgeStep("notification", f"DELETE FROM notification WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("resultcomment",
+              f"DELETE FROM resultcomment WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_run_id IN ({_RUNS})"),
+    PurgeStep("resultassignment",
+              f"DELETE FROM resultassignment WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_run_id IN ({_RUNS})"),
     PurgeStep("hypothesisfeedback",
               f"DELETE FROM hypothesisfeedback WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("flakerecord", f"DELETE FROM flakerecord WHERE test_case_id IN ({_CASES})"),

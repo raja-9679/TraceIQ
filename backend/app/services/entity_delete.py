@@ -131,6 +131,11 @@ ON_DELETE: Dict[str, str] = {
     "hararchive.project_id": DELETE,
     "repairoutcome.project_id": DELETE,     # WP16c repair history
     "hypothesisfeedback.project_id": DELETE,  # WP16d analysis ratings
+    # Failure discussion (2026-11): threads, assignments and notifications
+    # are about this project's results.
+    "resultcomment.project_id": DELETE,
+    "resultassignment.project_id": DELETE,
+    "notification.project_id": DELETE,
     # Reporting (WP12c): imports, path rules, journeys, flag catalogue and
     # benchmark groups are all project data.
     "journeyimport.project_id": DELETE,
@@ -221,6 +226,9 @@ ON_DELETE: Dict[str, str] = {
     # The run's own comparisons, and comments on them / on its groups.
     "visualcomparison.test_run_id": DELETE,
     "visualreviewcomment.test_run_id": DELETE,
+    # The discussion about a run's results goes with the run (NOT NULL).
+    "resultcomment.test_run_id": DELETE,
+    "resultassignment.test_run_id": DELETE,
     # A run's accessibility scan is that run's evidence (NOT NULL) — so run
     # retention sweeps it with the run.
     "accessibilitycheck.test_run_id": DELETE,

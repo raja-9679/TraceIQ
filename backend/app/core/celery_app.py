@@ -107,6 +107,7 @@ celery_app.conf.task_routes = {
     "app.tasks.outbound_webhook_tasks.retry_webhook_delivery": "main-queue",
     "app.tasks.outbound_webhook_tasks.redeliver_webhook_delivery": "main-queue",
     "app.tasks.cleanup_tasks.purge_assistant_conversations": "main-queue",
+    "app.tasks.cleanup_tasks.purge_notifications": "main-queue",
     "app.tasks.cleanup_tasks.purge_policy_decisions": "main-queue",
     "app.tasks.result_aggregator.process_job_results": "aggregator-queue",
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
@@ -203,6 +204,10 @@ celery_app.conf.beat_schedule = {
     'purge-assistant-conversations': {
         'task': 'app.tasks.cleanup_tasks.purge_assistant_conversations',
         'schedule': 86400.0,  # Daily; assistant chats live 30 days (WP14a)
+    },
+    'purge-notifications': {
+        'task': 'app.tasks.cleanup_tasks.purge_notifications',
+        'schedule': 86400.0,  # Daily; read 30 days, any 90
     },
     'purge-policy-decisions': {
         'task': 'app.tasks.cleanup_tasks.purge_policy_decisions',

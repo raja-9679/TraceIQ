@@ -435,6 +435,34 @@ def purge_assistant_conversations():
     return total
 
 
+#: Notifications: read ones are kept this long, unread ones longer.
+NOTIFICATION_READ_DAYS = 30
+NOTIFICATION_MAX_DAYS = 90
+
+
+@celery_app.task(name="app.tasks.cleanup_tasks.purge_notifications")
+def purge_notifications():
+    """Delete read notifications older than 30 days and any older than 90.
+    They are pointers to comments and assignments, not a record of their own
+    (the audit trail is), so nothing is lost when they go."""
+    from datetime import datetime, timedelta
+    from sqlalchemy import delete, or_
+    from app.models import Notification
+
+    now = datetime.utcnow()
+    with Session(sync_engine) as session:
+        result = session.exec(delete(Notification).where(or_(
+            Notification.created_at < now - timedelta(days=NOTIFICATION_MAX_DAYS),
+            (Notification.read_at.is_not(None))
+            & (Notification.read_at < now - timedelta(days=NOTIFICATION_READ_DAYS)),
+        )))
+        session.commit()
+        total = result.rowcount or 0
+    if total:
+        print(f"[Cleanup] Expired {total} notification(s)")
+    return total
+
+
 #: Default deny-log retention when POLICY_DENY_RETENTION_DAYS is unset (W4).
 POLICY_DENY_RETENTION_DEFAULT_DAYS = 90
 

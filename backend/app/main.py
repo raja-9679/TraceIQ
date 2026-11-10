@@ -206,6 +206,8 @@ from app.api import case_ownership as case_ownership_api  # noqa: E402
 app.include_router(case_ownership_api.router, prefix="/api", tags=["test-ownership"])
 from app.api import value_report as value_report_api  # noqa: E402
 app.include_router(value_report_api.router, prefix="/api", tags=["value-report"])
+from app.api import collaboration as collaboration_api  # noqa: E402
+app.include_router(collaboration_api.router, prefix="/api", tags=["collaboration"])
 app.include_router(personas.router, prefix="/api", tags=["personas"])
 app.include_router(heal_proposals.router, prefix="/api", tags=["heal-proposals"])
 app.include_router(flake_records.router, prefix="/api", tags=["flakes"])

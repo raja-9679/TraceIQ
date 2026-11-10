@@ -150,6 +150,11 @@ RLS_POLICIES: Dict[str, str] = {
     "caseownernotice": _in_project("caseownernotice.project_id"),
     "repairoutcome": _in_project("repairoutcome.project_id"),
     "hypothesisfeedback": _in_project("hypothesisfeedback.project_id"),
+    # Failure discussion (migration e162b3c4d617): comment text, who is
+    # assigned, and the notifications that point at them.
+    "resultcomment": _in_project("resultcomment.project_id"),
+    "resultassignment": _in_project("resultassignment.project_id"),
+    "notification": _in_project("notification.project_id"),
 }
 
 # Tenant-linked tables that deliberately have NO policy, with the reason.

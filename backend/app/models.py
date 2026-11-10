@@ -4139,6 +4139,66 @@ class HypothesisFeedback(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+# ---------------------------------------------------------------------------
+# Working on a failure together (2026-11): comments, assignment, notifications
+# ---------------------------------------------------------------------------
+
+class ResultComment(SQLModel, table=True):
+    """A comment on one result of a run (usually a failed one). Plain text,
+    rendered escaped. The thread belongs to the run: it is deleted with it
+    (`test_run_id` is a real FK; `result_id` is soft because results go with
+    their run anyway)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
+    result_id: int = Field(index=True)
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    body: str = Field(sa_column=Column(Text, nullable=False))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ResultAssignment(SQLModel, table=True):
+    """Who is looking at a failed result. One per result.
+
+    `test_case_id` (soft) is what lets the next run's failure of the SAME test
+    show "already assigned to Sam, from run #812" instead of looking unowned:
+    the newest open assignment for a case carries forward on read. Nothing is
+    copied, so closing the original closes it everywhere."""
+    __table_args__ = (UniqueConstraint("result_id", name="uq_resultassignment_result"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
+    result_id: int = Field(index=True)
+    test_case_id: Optional[int] = Field(default=None, index=True)
+    assignee_id: int = Field(foreign_key="users.id", index=True)
+    assigned_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    status: str = Field(default="open", index=True)    # open | done
+    done_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    done_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Notification(SQLModel, table=True):
+    """Something that happened to a person's work, shown under the bell.
+
+    Holds no text written by anyone: a kind, who did it, and where (run /
+    result ids are soft refs; a deleted run just makes the link stale). The
+    test's name is NOT stored — it is looked up on read, after checking the
+    reader can still see the project, so losing access hides the notification
+    and its subject together. Read ones are swept after 30 days, all after 90
+    (cleanup_tasks.purge_notifications)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    kind: str                       # assigned | comment | assignment_done
+    actor_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    run_id: int
+    result_id: int = Field(index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    read_at: Optional[datetime] = Field(default=None)
+
+
 # Seal every AuditLog row as it is flushed, in whichever process created it —
 # the API, a Celery worker, a script. Installed here rather than in a startup
 # hook because models.py is imported by every path that can write an audit row,
