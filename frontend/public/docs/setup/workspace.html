@@ -155,7 +155,8 @@
         </figure>
         <p>The button on the right of the tabs changes with the tab:</p>
         <ul>
-          <li><strong>Invite people</strong> (Members): an email address and a workspace role, <em>Member</em> or <em>Admin</em>. Someone who already has an account is added at once. For a new address, <strong>Create invitation</strong> keeps a pending invitation and shows its <strong>invitation link</strong>, with <strong>Copy invitation link</strong>. No email is sent, so send the link yourself: it is shown only then (it can't be shown again later) and works for 7 days. Needs a workspace admin.</li>
+          <li><strong>Invite people</strong> (Members): an email address and a workspace role, <em>Member</em> or <em>Admin</em>. Someone who already has an account is added at once. For a new address, <strong>Create invitation</strong> keeps a pending invitation, emails the person a link to create their account (when email is set up under <em>Instance settings → Email</em>), and shows you the same <strong>invitation link</strong> with <strong>Copy invitation link</strong>. The dialog says whether an email went out; if none did, send the link yourself. The link is shown only then and works for 7 days. Needs a workspace admin.</li>
+          <li><strong>A pending invitation</strong>, selected in the Members list, shows the role, the day its link stops working, and two buttons. <strong>Send again</strong> makes a new link (the old one stops working), emails it and shows it to you: use it when the email was lost or the link ran out. <strong>Cancel invitation</strong> removes the invitation, and its link no longer works.</li>
           <li><strong>New team</strong> (Teams): a name, a description, and optionally a first project to link it to.</li>
           <li><strong>New project</strong> (Projects): a name and a description. Any member of the workspace can create one, and becomes its admin.</li>
         </ul>
@@ -239,7 +240,7 @@
         </div>
 
         <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
-        <p class="footer-note">Describes the Workspace page as of October 2026.</p>
+        <p class="footer-note">Describes the Workspace page as of November 2026.</p>
       </div>
     </main>
 

@@ -46,7 +46,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Copy, Trash2, Search, UserPlus } from 'lucide-react';
+import { Trash2, Search, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import {
@@ -54,6 +54,7 @@ import {
 } from '@/components/redesign/primitives';
 import { Avatar, Facts, Field, ListSkeleton } from '@/components/redesign-local/groupE/bits';
 import { invitationLink, isWorkspaceAdminRole } from '@/lib/roles';
+import { InviteCreated, type CreatedInvite } from '@/components/invites/InviteCreated';
 
 // The tenant-wide ("all") listing adds the workspace name to each row.
 const workspaceOf = (m: DetailedMember): string | undefined => (m as DetailedMember & { workspace?: string }).workspace;
@@ -72,7 +73,7 @@ export default function UsersPage() {
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [showInviteDialog, setShowInviteDialog] = useState(false);
-    const [createdInvite, setCreatedInvite] = useState<{ email: string; link: string } | null>(null);
+    const [createdInvite, setCreatedInvite] = useState<CreatedInvite | null>(null);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('member'); // Default fall back
     const [inviteTargetWorkspaceId, setInviteTargetWorkspaceId] = useState<string>('current');
@@ -190,9 +191,9 @@ export default function UsersPage() {
             queryClient.invalidateQueries({ queryKey: ['workspaceInvitations', targetWorkspaceId] });
             queryClient.invalidateQueries({ queryKey: ['workspaceMembersDetailed', targetWorkspaceId] });
 
-            // The token comes back only from this POST and no email is sent:
-            // keep the dialog open on the link.
-            if (result?.token) setCreatedInvite({ email: inviteEmail, link: invitationLink(result.token) });
+            // The token comes back only from this POST: keep the dialog open
+            // on the link, next to whether the invitation was emailed.
+            if (result?.token) setCreatedInvite({ email: inviteEmail, link: invitationLink(result.token), emailed: result.email_sent === true });
             else setShowInviteDialog(false);
             setInviteEmail('');
             setNewWorkspaceName('');
@@ -285,28 +286,14 @@ export default function UsersPage() {
                                     </Button>
                                 </DialogTrigger>
                                 <DialogContent>
-                                    {createdInvite ? (<>
-                                    <DialogHeader>
-                                        <DialogTitle>Invitation created</DialogTitle>
-                                        <DialogDescription>
-                                            TraceIQ doesn't email invitations. Send this link to {createdInvite.email} yourself;
-                                            it is shown only now and works for 7 days.
-                                        </DialogDescription>
-                                    </DialogHeader>
-                                    <Field id="invite-link" label="Invitation link">
-                                        <Input id="invite-link" className={`${inputCls} font-mono text-xs`} readOnly value={createdInvite.link} onFocus={(e) => e.currentTarget.select()} />
-                                    </Field>
-                                    <DialogFooter>
-                                        <Button type="button" variant="outline" onClick={() => { setShowInviteDialog(false); setCreatedInvite(null); }}>Done</Button>
-                                        <Button type="button" onClick={() => { navigator.clipboard.writeText(createdInvite.link); toast.success('Invitation link copied'); }}>
-                                            <Copy className="h-4 w-4" /> Copy invitation link
-                                        </Button>
-                                    </DialogFooter>
-                                    </>) : (<>
+                                    {createdInvite ? (
+                                        <InviteCreated invite={createdInvite} id="invite-link"
+                                            onDone={() => { setShowInviteDialog(false); setCreatedInvite(null); }} />
+                                    ) : (<>
                                     <DialogHeader>
                                         <DialogTitle>Invite people</DialogTitle>
                                         <DialogDescription>
-                                            Invite someone to a workspace or a single project. You get a link to send them.
+                                            Invite someone to a workspace or a single project. They are emailed when email is set up, and you get the link too.
                                         </DialogDescription>
                                     </DialogHeader>
                                     <form onSubmit={handleInvite} className="flex flex-col gap-4 pt-2">

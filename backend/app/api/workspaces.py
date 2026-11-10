@@ -8,6 +8,7 @@ from app.models import User, Workspace, UserWorkspace, Team, UserTeam, UserRead,
 from app.services.workspace_service import workspace_service
 from app.services.access_service import access_service
 from app.services import key_scope
+from app.core.limiter import limiter
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -156,12 +157,43 @@ async def list_workspace_members_detailed(workspace_id: int, session: AsyncSessi
         
     return await workspace_service.get_workspace_members_detailed(workspace_id, session, current_user.id)
 
+# Invitations make this server email an address the caller chooses, so they
+# are rate-limited per client address like the other mail-sending endpoints.
+INVITE_RATE = "30/hour"
+
+
 @router.post("/workspaces/{workspace_id}/invitations")
-async def invite_to_workspace(workspace_id: int, invite: WorkspaceInvite, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+@limiter.limit(INVITE_RATE)
+async def invite_to_workspace(request: Request, workspace_id: int, invite: WorkspaceInvite, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     if not await rbac_service.has_permission(session, current_user.id, "workspace:manage_users", workspace_id=workspace_id):
         raise HTTPException(status_code=403, detail="Permission denied: workspace:manage_users")
         
     return await workspace_service.invite_user_to_workspace(invite.email, workspace_id, current_user.id, invite.role, session)
+
+
+@router.post("/workspaces/{workspace_id}/invitations/{invitation_id}/resend")
+@limiter.limit(INVITE_RATE)
+async def resend_workspace_invitation(request: Request, workspace_id: int, invitation_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    """Replace a pending invitation's link with a new one and email it again.
+
+    The old link stops working. The new one is returned once, as on create.
+    """
+    if not await rbac_service.has_permission(session, current_user.id, "workspace:manage_users", workspace_id=workspace_id):
+        raise HTTPException(status_code=403, detail="Permission denied: workspace:manage_users")
+    out = await workspace_service.resend_workspace_invitation(invitation_id, workspace_id, current_user.id, session)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    return out
+
+
+@router.delete("/workspaces/{workspace_id}/invitations/{invitation_id}")
+async def cancel_workspace_invitation(workspace_id: int, invitation_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    """Cancel a pending invitation; its link stops working."""
+    if not await rbac_service.has_permission(session, current_user.id, "workspace:manage_users", workspace_id=workspace_id):
+        raise HTTPException(status_code=403, detail="Permission denied: workspace:manage_users")
+    if not await workspace_service.cancel_workspace_invitation(invitation_id, workspace_id, current_user.id, session):
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    return {"status": "cancelled"}
 
 @router.get("/workspaces/{workspace_id}/invitations")
 async def list_workspace_invitations(workspace_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):

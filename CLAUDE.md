@@ -1721,6 +1721,25 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   (`owner_of_step`). Not in suite hooks (refused). `GET
   /api/cases/{id}/used-by`; `GET /api/cases?q=` searches names. Worker
   rebuild needed only for the clear error text and the grouping.
+- **Invitation emails (2026-11-10)** — no migration. `app/services/invite_email.py`:
+  a workspace invitation now emails the invitee (`/signup?token=…`, built from
+  `FRONTEND_BASE_URL`) and an existing user who is added directly gets an
+  "added to" note; both go through `send_account_email`. The wording is fixed —
+  only the workspace and inviter names come from callers, cut to 80 chars,
+  stripped of line breaks and HTML-escaped — because anyone who may invite can
+  make the server mail an address of their choosing; hence also `30/hour` on
+  the three invite endpoints and a strict address check for NEW invitations
+  (an existing account is still found by whatever address it has). Responses
+  carry `email_sent` (= handed to the queue; false with no SMTP or in a demo
+  workspace, which never sends) and the link is STILL returned to the inviter,
+  so an instance without email behaves as before. New: `POST
+  /workspaces/{id}/invitations/{inv}/resend` (new token — the old link dies —
+  new 7-day expiry, re-mailed, link returned once) and `DELETE …/{inv}`
+  (cancel); both need `workspace:manage_users`, 404 for another workspace's
+  invitation, audited (`invitation_created|resent|cancelled`). UI: shared
+  `components/invites/InviteCreated.tsx`; Workspace → Members → a pending
+  invitation has "Send again" / "Cancel invitation". Real SMTP delivery of
+  this mail was not exercised (it shares the password-reset sender).
 - **Browser recorder (2026-11-10)** — `integrations/browser-recorder/` (MV3,
   v0.2.0; README there). No backend change and **no API key**: "Record" in the
   test editor (`components/test-builder/RecorderDialog.tsx`, protocol +

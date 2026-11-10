@@ -101,7 +101,8 @@ A demo workspace can also be removed with **Delete demo workspace** on its own c
 
 The button on the right of the tabs changes with the tab:
 
-- **Invite people** (Members): an email address and a workspace role, *Member* or *Admin*. Someone who already has an account is added at once. For a new address, **Create invitation** keeps a pending invitation and shows its **invitation link**, with **Copy invitation link**. No email is sent, so send the link yourself: it is shown only then (it can't be shown again later) and works for 7 days. Needs a workspace admin.
+- **Invite people** (Members): an email address and a workspace role, *Member* or *Admin*. Someone who already has an account is added at once. For a new address, **Create invitation** keeps a pending invitation, emails the person a link to create their account (when email is set up under *Instance settings → Email*), and shows you the same **invitation link** with **Copy invitation link**. The dialog says whether an email went out; if none did, send the link yourself. The link is shown only then and works for 7 days. Needs a workspace admin.
+- **A pending invitation**, selected in the Members list, shows the role, the day its link stops working, and two buttons. **Send again** makes a new link (the old one stops working), emails it and shows it to you: use it when the email was lost or the link ran out. **Cancel invitation** removes the invitation, and its link no longer works.
 - **New team** (Teams): a name, a description, and optionally a first project to link it to.
 - **New project** (Projects): a name and a description. Any member of the workspace can create one, and becomes its admin.
 

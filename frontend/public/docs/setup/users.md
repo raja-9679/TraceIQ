@@ -68,7 +68,8 @@ Only shown to people who may manage the workspace's members (workspace admins an
 > **What "Create invitation" does**
 >
 > - **If the person already has a TraceIQ account** with that email, they are added straight away. Nothing to accept.
-> - **If not**, TraceIQ keeps a pending invitation, listed under *Pending invites*. **No email is sent**: the dialog shows the **invitation link** with **Copy invitation link**, once, for you to send. When they sign up from it with exactly that address, they join with the role you chose.
+> - **If not**, TraceIQ keeps a pending invitation, listed under *Pending invites*. **The person is emailed** a link to create their account, when email is set up on your TraceIQ (*Instance settings → Email*). The dialog also shows you the **invitation link** with **Copy invitation link**, once, and says whether an email went out: if none did, or it does not arrive, send the link yourself. When they sign up from it with exactly that address, they join with the role you chose.
+> - Someone who already has an account and is added at once gets a short email saying which workspace they were added to.
 > - A project admin who is not a workspace admin can only invite people who are already in the workspace.
 
 ## 3. The list
@@ -78,7 +79,7 @@ Only shown to people who may manage the workspace's members (workspace admins an
 Type in the search box to find someone by name or email. The list has up to two groups:
 
 - **Members**: each person, with their email and their role in this workspace on the right. Admin roles have a lavender label.
-- **Pending invites**: invitations for addresses that have no account yet, marked Pending. They can't be withdrawn on this page yet.
+- **Pending invites**: invitations for addresses that have no account yet, marked Pending. To send one again or cancel it, select it on the *Workspace* page, under Members.
 
 ## 4. The selected person
 
@@ -101,7 +102,7 @@ Click someone in the list to see them here: their **role**, their **status**, an
 1. Ask them to sign up to TraceIQ with their work email (or do the next steps first; they join when they sign up).
 2. Pick the workspace in the menu, then press **Invite people**.
 3. Type their email, set **Invite to** to **Project**, and choose the project.
-4. Choose **Viewer**, **Editor** or **Project Admin**, and press **Create invitation**. Send them the link it shows.
+4. Choose **Viewer**, **Editor** or **Project Admin**, and press **Create invitation**. They are emailed when email is set up; otherwise send them the link it shows.
 
 ### …remove someone who has left
 
@@ -120,7 +121,8 @@ Click someone in the list to see them here: their **role**, their **status**, an
 - **Who you see depends on who you are.** Workspace and tenant admins see every member, the pending invitations, *Invite people* and *Remove from workspace*. Other members see only the people who have been given access to the same projects as them, one by one (access through a team doesn't count here), and nothing to change.
 - **Removing is immediate and can't be undone**, but you can invite the person again; an existing account is added straight back.
 - **Inviting someone who is already a member changes nothing**, not even their role. There is no button to change a workspace role in this version: remove the person and invite them again with the new role.
-- **Pending invitations don't expire** for people who sign up with the invited address, whenever they do.
+- **Pending invitations don't expire** for people who sign up with the invited address, whenever they do. The *link* works for 7 days; after that the person can still sign up with that address in the usual way, or an admin can send a new link.
+- **Demo workspaces never send email**, so inviting someone there only gives you the link.
 - **With single sign-on**, people may be added to the workspace automatically when they first sign in, depending on how your instance admin set it up.
 
 ## Related pages

@@ -560,6 +560,9 @@ export interface DetailedMember {
     status: 'active' | 'invited';
     created_at?: string;
     token?: string;
+    /** Pending invitations only. */
+    expires_at?: string;
+    expired?: boolean;
 }
 
 export const getWorkspaceMembersDetailed = async (wsId: number): Promise<DetailedMember[]> => {
@@ -567,9 +570,23 @@ export const getWorkspaceMembersDetailed = async (wsId: number): Promise<Detaile
     return response.data;
 };
 
-/** `token` comes back only when a NEW invitation was created (status
- *  "invited"); it is never listed again, and no email is sent. */
-export interface WorkspaceInviteResult { status: 'success' | 'invited' | 'exists'; message: string; token?: string }
+/** `token` comes back only when an invitation was created or re-sent (status
+ *  "invited"); it is never listed. `email_sent` says whether a message was
+ *  handed to the mail queue (false when the instance has no email set up). */
+export interface WorkspaceInviteResult {
+    status: 'success' | 'invited' | 'exists'; message?: string; token?: string;
+    email_sent?: boolean; invitation_id?: number; email?: string;
+}
+
+/** Replaces a pending invitation's link (the old one stops working) and emails it again. */
+export const resendWorkspaceInvitation = async (wsId: number, invitationId: number): Promise<WorkspaceInviteResult> => {
+    const response = await api.post(`/workspaces/${wsId}/invitations/${invitationId}/resend`);
+    return response.data;
+};
+
+export const cancelWorkspaceInvitation = async (wsId: number, invitationId: number): Promise<void> => {
+    await api.delete(`/workspaces/${wsId}/invitations/${invitationId}`);
+};
 
 export const inviteUserToWorkspace = async (wsId: number, email: string, role: string): Promise<WorkspaceInviteResult> => {
     const response = await api.post(`/workspaces/${wsId}/invitations`, { email, role });

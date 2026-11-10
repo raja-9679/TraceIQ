@@ -10,7 +10,7 @@ import {
     removeUserFromTeam, getProjectTeams, getProjectMembers,
     unlinkTeamFromProject, removeUserProjectAccess,
     addTeamToProject, addUserProjectAccess,
-    getWorkspaceMembersDetailed, inviteUserToWorkspace, getWorkspaceInvitations, setWorkspaceMemberRole,
+    getWorkspaceMembersDetailed, inviteUserToWorkspace, getWorkspaceInvitations, resendWorkspaceInvitation, cancelWorkspaceInvitation, setWorkspaceMemberRole,
 } from '@/lib/api';
 import type { DetailedMember } from '@/lib/api';
 import WorkspaceDeleteDialog from '@/components/WorkspaceDeleteDialog';
@@ -19,7 +19,7 @@ import DemoWorkspaceCard from '@/components/demo/DemoWorkspaceCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-    Plus, Users, FolderOpen, Loader2, Mail, Link as LinkIcon, Trash2, X, UserPlus, Copy,
+    Plus, Users, FolderOpen, Loader2, Mail, Link as LinkIcon, Trash2, X, UserPlus, Send,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -55,6 +55,7 @@ import { Avatar, Facts, Field, ListSkeleton } from '@/components/redesign-local/
 import { cn } from '@/lib/utils';
 import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 import { invitationLink, isWorkspaceAdminRole, workspaceRoleLabel } from '@/lib/roles';
+import { InviteCreated, type CreatedInvite } from '@/components/invites/InviteCreated';
 import { usePermission } from '@/hooks/usePermission';
 
 interface ProjectTeam {
@@ -121,10 +122,10 @@ export default function WorkspacePage() {
     const [newName, setNewName] = useState('');
     const [newDesc, setNewDesc] = useState('');
     const [inviteEmail, setInviteEmail] = useState('');
-    // The invite token is returned once, by the POST that creates it (the
-    // list never carries it, and no email is sent), so the link is shown
-    // right there in the dialog.
-    const [createdInvite, setCreatedInvite] = useState<{ email: string; link: string } | null>(null);
+    // The invite token is returned once, by the POST that creates or re-sends
+    // it (the list never carries it), so the link is shown right there in the
+    // dialog, next to whether the invitation was emailed.
+    const [createdInvite, setCreatedInvite] = useState<CreatedInvite | null>(null);
     const [linkProjectId, setLinkProjectId] = useState<string>('');
     const [linkAccessLevel, setLinkAccessLevel] = useState<string>('editor');
 
@@ -375,16 +376,39 @@ export default function WorkspacePage() {
             queryClient.invalidateQueries({ queryKey: ['workspaceInvitations', selectedWorkspaceId] });
             queryClient.invalidateQueries({ queryKey: ['workspaceMembersDetailed', selectedWorkspaceId] });
             if (data?.token) {
-                setCreatedInvite({ email: workspaceInviteEmail, link: invitationLink(data.token) });
+                setCreatedInvite({ email: workspaceInviteEmail, link: invitationLink(data.token), emailed: data.email_sent === true });
+            } else if (data?.status === 'exists') {
+                setShowInviteWorkspaceMember(false);
+                toast.info('This person already has a pending invitation. Select it in the list to send it again or cancel it.');
             } else {
                 setShowInviteWorkspaceMember(false);
-                toast.success(data?.message || 'Invitation sent');
+                toast.success(data?.email_sent ? 'Added to the workspace. They were told by email.' : 'Added to the workspace.');
             }
             setWorkspaceInviteEmail('');
         },
         onError: (error: unknown) => {
             toast.error(errDetail(error, 'Failed to send invitation'));
         }
+    });
+
+    const resendInviteMutation = useMutation({
+        mutationFn: (invitationId: number) => resendWorkspaceInvitation(selectedWorkspaceId!, invitationId),
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ['workspaceInvitations', selectedWorkspaceId] });
+            if (data?.token) {
+                setCreatedInvite({ email: data.email ?? '', link: invitationLink(data.token), emailed: data.email_sent === true });
+                setShowInviteWorkspaceMember(true);
+            }
+        },
+        onError: (error: unknown) => toast.error(errDetail(error, 'Could not send the invitation again')),
+    });
+    const cancelInviteMutation = useMutation({
+        mutationFn: (invitationId: number) => cancelWorkspaceInvitation(selectedWorkspaceId!, invitationId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['workspaceInvitations', selectedWorkspaceId] });
+            toast.success('Invitation cancelled. Its link no longer works.');
+        },
+        onError: (error: unknown) => toast.error(errDetail(error, 'Could not cancel the invitation')),
     });
 
     if (workspacesLoading) {
@@ -531,14 +555,34 @@ export default function WorkspacePage() {
                                 <Pill tone="butter" className="self-start">Invited</Pill>
                                 <h2 className="break-all text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{shownInvite.email}</h2>
                                 {shownInvite.created_at && (
-                                    <span className="text-sm text-ink-soft">Sent {formatDistanceToNow(new Date(shownInvite.created_at), { addSuffix: true })}</span>
+                                    <span className="text-sm text-ink-soft">Invited {formatDistanceToNow(new Date(shownInvite.created_at), { addSuffix: true })}</span>
                                 )}
                             </div>
-                            <Facts items={[{ label: 'Workspace role', value: workspaceRoleLabel(shownInvite.role) }]} />
+                            <Facts items={[
+                                { label: 'Workspace role', value: workspaceRoleLabel(shownInvite.role) },
+                                ...(shownInvite.expires_at ? [{
+                                    label: shownInvite.expired ? 'Link expired' : 'Link works until',
+                                    value: new Date(shownInvite.expires_at).toLocaleDateString(),
+                                }] : []),
+                            ]} />
+                            <div className="flex flex-wrap gap-2">
+                                <Button variant="outline" disabled={resendInviteMutation.isPending}
+                                    onClick={() => resendInviteMutation.mutate(shownInvite.id)}>
+                                    <Send className="h-4 w-4" /> Send again
+                                </Button>
+                                <Button variant="outline" disabled={cancelInviteMutation.isPending}
+                                    onClick={() => {
+                                        if (window.confirm(`Cancel the invitation for ${shownInvite.email}? Its link will stop working.`)) {
+                                            cancelInviteMutation.mutate(shownInvite.id);
+                                        }
+                                    }}>
+                                    <X className="h-4 w-4" /> Cancel invitation
+                                </Button>
+                            </div>
                             <Panel title="What happens next" callout>
-                                They join with this role once they sign up from the invitation link. TraceIQ
-                                doesn't email it: the link is shown once, right after the invitation is created,
-                                for you to send. It can't be shown again here.
+                                They join with this role once they sign up from the invitation link, using this email
+                                address. The link is shown only when the invitation is created. <strong>Send again</strong> makes
+                                a new link (the old one stops working), emails it when email is set up, and shows it to you.
                             </Panel>
                         </DetailCard>
                     ) : null}
@@ -1044,24 +1088,10 @@ export default function WorkspacePage() {
             {/* Invite Workspace Member Dialog */}
             <Dialog open={showInviteWorkspaceMember} onOpenChange={(o) => { setShowInviteWorkspaceMember(o); if (!o) setCreatedInvite(null); }}>
                 <DialogContent className="sm:max-w-md">
-                    {createdInvite ? (<>
-                    <DialogHeader>
-                        <DialogTitle>Invitation created</DialogTitle>
-                        <DialogDescription>
-                            TraceIQ doesn't email invitations. Send this link to {createdInvite.email} yourself;
-                            it is shown only now and works for 7 days.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <Field id="ws-invite-link" label="Invitation link">
-                        <Input id="ws-invite-link" className={`${inputCls} font-mono text-xs`} readOnly value={createdInvite.link} onFocus={(e) => e.currentTarget.select()} />
-                    </Field>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => { setShowInviteWorkspaceMember(false); setCreatedInvite(null); }}>Done</Button>
-                        <Button onClick={() => { navigator.clipboard.writeText(createdInvite.link); toast.success('Invitation link copied'); }}>
-                            <Copy className="h-4 w-4" /> Copy invitation link
-                        </Button>
-                    </DialogFooter>
-                    </>) : (<>
+                    {createdInvite ? (
+                        <InviteCreated invite={createdInvite} id="ws-invite-link"
+                            onDone={() => { setShowInviteWorkspaceMember(false); setCreatedInvite(null); }} />
+                    ) : (<>
                     <DialogHeader>
                         <DialogTitle>Invite to workspace</DialogTitle>
                         <DialogDescription>Give a new person access to the whole workspace.</DialogDescription>

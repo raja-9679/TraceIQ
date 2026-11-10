@@ -1,5 +1,6 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.core.limiter import limiter
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, or_
 from app.core.database import get_session
@@ -265,7 +266,8 @@ class ProjectInvite(BaseModel):
     role: str = "viewer"  # admin, editor, viewer
 
 @router.post("/projects/{project_id}/invitations")
-async def invite_to_project(project_id: int, invite: ProjectInvite, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+@limiter.limit("30/hour")  # may email an address the caller chooses
+async def invite_to_project(request: Request, project_id: int, invite: ProjectInvite, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     # 1. Check Permission (Project Admin) - Use manage_access permission
     allowed = await rbac_service.has_permission(session, current_user.id, "project:manage_access", project_id=project_id)
     if not allowed:

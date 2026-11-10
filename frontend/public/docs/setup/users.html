@@ -112,7 +112,8 @@
           <div><strong class="title">What "Create invitation" does</strong>
             <ul>
               <li><strong>If the person already has a TraceIQ account</strong> with that email, they are added straight away. Nothing to accept.</li>
-              <li><strong>If not</strong>, TraceIQ keeps a pending invitation, listed under <em>Pending invites</em>. <strong>No email is sent</strong>: the dialog shows the <strong>invitation link</strong> with <strong>Copy invitation link</strong>, once, for you to send. When they sign up from it with exactly that address, they join with the role you chose.</li>
+              <li><strong>If not</strong>, TraceIQ keeps a pending invitation, listed under <em>Pending invites</em>. <strong>The person is emailed</strong> a link to create their account, when email is set up on your TraceIQ (<em>Instance settings → Email</em>). The dialog also shows you the <strong>invitation link</strong> with <strong>Copy invitation link</strong>, once, and says whether an email went out: if none did, or it does not arrive, send the link yourself. When they sign up from it with exactly that address, they join with the role you chose.</li>
+              <li>Someone who already has an account and is added at once gets a short email saying which workspace they were added to.</li>
               <li>A project admin who is not a workspace admin can only invite people who are already in the workspace.</li>
             </ul></div>
         </div>
@@ -124,7 +125,7 @@
         <p>Type in the search box to find someone by name or email. The list has up to two groups:</p>
         <ul>
           <li><strong>Members</strong>: each person, with their email and their role in this workspace on the right. Admin roles have a lavender label.</li>
-          <li><strong>Pending invites</strong>: invitations for addresses that have no account yet, marked <span class="pill t-butter">Pending</span>. They can't be withdrawn on this page yet.</li>
+          <li><strong>Pending invites</strong>: invitations for addresses that have no account yet, marked <span class="pill t-butter">Pending</span>. To send one again or cancel it, select it on the <em>Workspace</em> page, under Members.</li>
         </ul>
 
         <div class="part"><span class="num">4</span><h2 id="detail" data-toc="④ The selected person">The selected person</h2></div>
@@ -158,7 +159,7 @@
           <li>Ask them to sign up to TraceIQ with their work email (or do the next steps first; they join when they sign up).</li>
           <li>Pick the workspace in the menu, then press <strong>Invite people</strong>.</li>
           <li>Type their email, set <strong>Invite to</strong> to <strong>Project</strong>, and choose the project.</li>
-          <li>Choose <strong>Viewer</strong>, <strong>Editor</strong> or <strong>Project Admin</strong>, and press <strong>Create invitation</strong>. Send them the link it shows.</li>
+          <li>Choose <strong>Viewer</strong>, <strong>Editor</strong> or <strong>Project Admin</strong>, and press <strong>Create invitation</strong>. They are emailed when email is set up; otherwise send them the link it shows.</li>
         </ol>
         <h3>…remove someone who has left</h3>
         <ol class="steps">
@@ -178,7 +179,8 @@
           <li><strong>Who you see depends on who you are.</strong> Workspace and tenant admins see every member, the pending invitations, <em>Invite people</em> and <em>Remove from workspace</em>. Other members see only the people who have been given access to the same projects as them, one by one (access through a team doesn't count here), and nothing to change.</li>
           <li><strong>Removing is immediate and can't be undone</strong>, but you can invite the person again; an existing account is added straight back.</li>
           <li><strong>Inviting someone who is already a member changes nothing</strong>, not even their role. There is no button to change a workspace role in this version: remove the person and invite them again with the new role.</li>
-          <li><strong>Pending invitations don't expire</strong> for people who sign up with the invited address, whenever they do.</li>
+          <li><strong>Pending invitations don't expire</strong> for people who sign up with the invited address, whenever they do. The <em>link</em> works for 7 days; after that the person can still sign up with that address in the usual way, or an admin can send a new link.</li>
+          <li><strong>Demo workspaces never send email</strong>, so inviting someone there only gives you the link.</li>
           <li><strong>With single sign-on</strong>, people may be added to the workspace automatically when they first sign in, depending on how your instance admin set it up.</li>
         </ul>
 
@@ -191,7 +193,7 @@
         </div>
 
         <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
-        <p class="footer-note">Describes the Users page as of October 2026.</p>
+        <p class="footer-note">Describes the Users page as of November 2026.</p>
       </div>
     </main>
 

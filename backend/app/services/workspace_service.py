@@ -471,7 +471,18 @@ class WorkspaceService:
     async def invite_user_to_workspace(email: str, workspace_id: int, invited_by_id: int, role: str, session: AsyncSession, project_id: Optional[int] = None, project_role: Optional[str] = None):
         from app.models import User, UserWorkspace, WorkspaceInvitation
         from app.services.rbac_service import rbac_service
-        
+
+        # The address ends up in a mail header and as the identity an
+        # invitation is tied to, so it must be one plain address. (Stored
+        # as typed apart from surrounding spaces: sign-up compares exactly.)
+        # An existing account is found by its stored address whatever it looks
+        # like (and simply gets no mail if it is not one); a NEW invitation
+        # for a malformed address is refused.
+        from fastapi import HTTPException
+        from app.settings_models import _EMAIL_RE
+        email = (email or "").strip()
+        mailable = len(email) <= 254 and bool(_EMAIL_RE.match(email))
+
         # Map string role to RBAC Role
         # UI sends 'admin' or 'member'. Map to 'Workspace Admin' / 'Workspace Member'
         rbac_role_name = "Workspace Member"
@@ -504,14 +515,29 @@ class WorkspaceService:
                                       "scope": "workspace", "scope_id": workspace_id,
                                       "role": rbac_role_name})
             
+                newly_added = True
+            else:
+                newly_added = False
+
             # If Project Access Requested
             if project_id and project_role:
                 await WorkspaceService.add_user_project_access(user.id, project_id, project_role, session,
                                                                actor_id=invited_by_id)
 
             await session.commit()
-            return {"status": "success", "message": "User added to workspace"}
+            email_sent = False
+            if newly_added and mailable:
+                # Tell them: until now a person found out they were in a new
+                # workspace only by noticing it in the switcher.
+                from app.services import invite_email
+                ws_name, inviter = await WorkspaceService._invite_names(workspace_id, invited_by_id, session)
+                email_sent = await invite_email.send(
+                    session, workspace_id=workspace_id, to_email=user.email,
+                    message=invite_email.build_added(workspace_name=ws_name, inviter_name=inviter, role=role))
+            return {"status": "success", "message": "User added to workspace", "email_sent": email_sent}
         else:
+            if not mailable:
+                raise HTTPException(status_code=400, detail="Enter one valid email address.")
             # Check if already invited
             result = await session.exec(
                 select(WorkspaceInvitation)
@@ -535,13 +561,80 @@ class WorkspaceService:
                     project_role=project_role
                 )
                 session.add(invite)
+                from app.services.audit import record
+                await record(session, entity_type="workspace", entity_id=workspace_id,
+                             action="invitation_created", user_id=invited_by_id,
+                             workspace_id=workspace_id,
+                             changes={"email": email, "role": role, "project_id": project_id})
                 await session.commit()
-                # In a real app, send email with link: f"{settings.FRONTEND_URL}/join?token={token}"
-                return {"status": "invited", "message": "User invited to workspace", "token": token}
+                email_sent = await WorkspaceService._email_invitation(invite, token, session)
+                # The link goes back to the inviter as well: it is the only
+                # copy on an instance without email, and a fallback otherwise.
+                return {"status": "invited", "message": "User invited to workspace",
+                        "token": token, "email_sent": email_sent, "invitation_id": invite.id}
             else:
-                 # Update existing invite if new scope?
-                 # ideally we should, but for now simple return
-                 return {"status": "exists", "message": "User already has a pending invitation"}
+                 # The token of a pending invitation cannot be shown again; the
+                 # caller can resend (which issues a new link) or cancel it.
+                 return {"status": "exists", "message": "User already has a pending invitation",
+                         "invitation_id": existing_invite.id}
+
+    @staticmethod
+    async def _invite_names(workspace_id: int, invited_by_id: int, session: AsyncSession):
+        from app.models import User, Workspace
+        ws = await session.get(Workspace, workspace_id)
+        inviter = await session.get(User, invited_by_id)
+        return (ws.name if ws else None,
+                (inviter.full_name or inviter.email) if inviter else None)
+
+    @staticmethod
+    async def _email_invitation(invite, token: str, session: AsyncSession) -> bool:
+        from app.services import invite_email
+        ws_name, inviter = await WorkspaceService._invite_names(invite.workspace_id, invite.invited_by_id, session)
+        return await invite_email.send(
+            session, workspace_id=invite.workspace_id, to_email=invite.email,
+            message=invite_email.build_invitation(
+                workspace_name=ws_name, inviter_name=inviter, role=invite.role,
+                token=token, expires_at=invite.expires_at))
+
+    @staticmethod
+    async def resend_workspace_invitation(invitation_id: int, workspace_id: int, actor_id: int, session: AsyncSession):
+        """Issue a NEW link for a pending invitation and email it.
+
+        The old link stops working: "resend" is also how a link that went to
+        the wrong place is replaced. Returns None if there is no such
+        invitation in this workspace.
+        """
+        from app.models import WorkspaceInvitation
+        invite = await session.get(WorkspaceInvitation, invitation_id)
+        if not invite or invite.workspace_id != workspace_id:
+            return None
+        token = secrets.token_urlsafe(32)
+        invite.token = token
+        invite.expires_at = datetime.utcnow() + timedelta(days=7)
+        invite.invited_by_id = actor_id
+        session.add(invite)
+        from app.services.audit import record
+        await record(session, entity_type="workspace", entity_id=workspace_id,
+                     action="invitation_resent", user_id=actor_id, workspace_id=workspace_id,
+                     changes={"email": invite.email, "role": invite.role})
+        await session.commit()
+        email_sent = await WorkspaceService._email_invitation(invite, token, session)
+        return {"status": "invited", "token": token, "email_sent": email_sent,
+                "invitation_id": invite.id, "email": invite.email}
+
+    @staticmethod
+    async def cancel_workspace_invitation(invitation_id: int, workspace_id: int, actor_id: int, session: AsyncSession) -> bool:
+        from app.models import WorkspaceInvitation
+        invite = await session.get(WorkspaceInvitation, invitation_id)
+        if not invite or invite.workspace_id != workspace_id:
+            return False
+        from app.services.audit import record
+        await record(session, entity_type="workspace", entity_id=workspace_id,
+                     action="invitation_cancelled", user_id=actor_id, workspace_id=workspace_id,
+                     changes={"email": invite.email, "role": invite.role})
+        await session.delete(invite)
+        await session.commit()
+        return True
 
     @staticmethod
     async def get_workspace_invitations(workspace_id: int, session: AsyncSession):
@@ -556,6 +649,8 @@ class WorkspaceService:
                 "email": i.email,
                 "role": i.role,
                 "created_at": i.created_at,
+                "expires_at": i.expires_at,
+                "expired": bool(i.expires_at and i.expires_at < datetime.utcnow()),
                 "status": "invited",
                 # NOTE: the raw invite token is intentionally NOT returned — it
                 # is a bearer credential that lets its holder register as this
