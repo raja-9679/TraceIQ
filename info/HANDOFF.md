@@ -10,7 +10,97 @@ it belongs here rather than in a chat history.
 
 ---
 
-## Resume here (2026-10-22, office laptop) — read this first
+## Resume here (2026-11-10, office laptop) — read this first
+
+**State.** Everything is on `feature/redesign-a`, pushed to origin (head
+`20fa5de` plus this note). Working tree clean. The local stack
+(`~/traceiq-test`, http://localhost:8080) runs images built from that head;
+its database is at migration `e162b3c4d617` (new today). The feature branches
+`feat/recorder`, `feat/onboarding-invites`, `feat/failure-collab` are merged
+and can be deleted. Last verification: backend unit 2630 passed; the live
+suites touched today passed (invitations, getting-started, failure
+discussion, demo seeds, purge, entity delete, erasure, RLS, tenant isolation)
+and `./run-tests-live.sh --migrations` is ok — the WHOLE live suite was not
+re-run; frontend 285 passed, tsc clean; recorder e2e passes.
+
+**Done today.**
+- UI redesign finished: the last 11 pages (test editor, release readiness,
+  requirements, incidents, access matrix, estate, script inventory, frontend
+  quality, access reviews, worker fleet, on-call). Only the auth pages keep
+  the old look, on purpose. Their guide pages were re-captured.
+- A client-needs review (as a buyer's CTO / PM / test manager / tester /
+  developer) produced a 10-item build order; items 1-3 are built:
+  1. **Recorder** — `integrations/browser-recorder/` v0.2.0: "Record" in the
+     test editor, no API key, checks, password placeholders. CLAUDE.md →
+     "Browser recorder".
+  2. **Invitation emails + Get started card** — CLAUDE.md → "Invitation
+     emails", "Get started checklist".
+  3. **Failure discussion** — comments, assignment, notifications bell;
+     migration `e162b3c4d617`. CLAUDE.md → "Working on a failure together".
+  The automated security review raised findings on 1 and 2; all were valid
+  and are fixed (see the `fix(recorder)` / `fix(invites)` commits).
+
+**Next — the remaining build order (owner said "continue tomorrow"):**
+4. **Test cycles**: group manual + automated runs under a release, with
+   assignees and progress. Start by reading `app/api/manual_testing.py`,
+   `ReleaseSignoff` and `app/services/release_readiness.py` — a cycle should
+   reuse them, not duplicate them.
+5. Import from Selenium / Cypress / Postman / spreadsheets (today: Playwright
+   import + JUnit results only).
+6. CSV/PDF export on every report + saved filters.
+7. GitLab / Azure DevOps / Jenkins at the level of the GitHub Action.
+8. Database-check step; geolocation / timezone / permission emulation.
+9. Opt-in product usage analytics.
+10. Business items (not code): pen test, pricing + trial, final licence,
+    real-vendor checks (`docs/REAL_SERVICE_CHECKLIST.md`).
+The way of working that held all day: build each item on its own `feat/…`
+branch off `feature/redesign-a`, verify, push, report; the owner says "merge"
+and it is fast-forwarded into `feature/redesign-a`.
+
+**Open / not verified (be honest about these when asked).**
+- Recorder: not in the Chrome Web Store (needs the owner's developer account;
+  then build the frontend with `VITE_RECORDER_STORE_URL`). Never run in a
+  normal desktop Chrome window (only headless Chromium with the extension
+  loaded), and no recorded test has been executed by a worker — the selectors
+  were only replayed through Playwright.
+- Invitations: no real SMTP delivery was exercised (tests stub the sender).
+  The inviter is named only when their address is verified; email
+  verification is opt-in, so most instances will say "A colleague".
+- Guide: every picture that shows the sidebar predates the Notifications row.
+  A full re-capture needs the docs account's demo workspace rebuilt first —
+  its data dates from 2026-10-26 (Overview's 14-day chart is empty and
+  `today-overview.spec.ts` fails at the bar hover; Release readiness reads
+  "Not ready" on evidence age; the "Add a todo" quarantine was re-created by
+  hand and expires 2026-11-24). The discussed-failure rows in that demo were
+  inserted by hand to match `demo_seed/collab.py`. Details at the end of
+  `info/GUIDE_FOLLOWUPS.md`.
+- Worker fleet and On-call now split their sections into tabs (only the open
+  tab fetches); the owner has not said whether to keep that.
+- Still untried from before: the iTop tracker "Test connection"
+  (`itsupport.thehindu.co.in`, allowlisted under Settings → Policies).
+- Unchanged from earlier notes: the C5 force-push / credential rotation, and
+  nothing here is on `main`.
+
+**Traps found today.**
+- A backend change needs BOTH images rebuilt and the whole compose `up -d`
+  (backend, celery worker, beat share the backend image); the entrypoint then
+  migrates the local DB.
+- `frontend/src/api/generated/*` must be regenerated with `npm run gen:api`
+  after any API change; it needs `openapi-typescript@7.13.0` in
+  `node_modules` (`npm install --no-save openapi-typescript@7.13.0` if absent).
+- After editing the recorder, run `integrations/browser-recorder/pack.py` and
+  commit the zip.
+- Playwright's `selectOption()` and `el.click()` from page scripts produce
+  untrusted events, which the recorder ignores by design — drive selects by
+  keyboard in its tests.
+- `auditlog` survives the TRUNCATE between live tests: scope audit assertions
+  by `workspace_id`.
+- A capture run that fails part-way has already overwritten that page's
+  pictures; restore them with `git checkout -- <files>` before committing.
+
+---
+
+## Resume here (2026-10-22, office laptop)
 
 **State.** Both branches committed locally and **NOT pushed yet**
 (`feature/enterprise-auth-ai`, `feature/redesign-a`; push = fast-forward to
