@@ -108,7 +108,9 @@ async def test_invitation_is_emailed_and_link_still_returned(maker, client, outb
     assert len(outbox) == 1
     to, subject, html, text_body = outbox[0]
     assert to == "new@acme.test"
-    assert subject == "Maya Rao invited you to Checkout team on TraceIQ"
+    assert subject == "You are invited to a TraceIQ workspace"
+    assert 'admin@acme.test invited you to join the workspace "Checkout team"' in text_body
+    assert "Maya Rao" not in text_body  # the display name is free text; it is not mailed
     assert f"/signup?token={body['token']}" in text_body
     assert len(await _audit(maker, "invitation_created")) == 1
 
@@ -143,7 +145,7 @@ async def test_existing_user_is_added_and_told(maker, client, outbox):
                           json={"email": "already@acme.test", "role": "admin"})
     assert r.json() == {"status": "success", "message": "User added to workspace", "email_sent": True}
     to, subject, _html, text_body = outbox[0]
-    assert to == "already@acme.test" and subject == "Maya Rao added you to Checkout team on TraceIQ"
+    assert to == "already@acme.test" and subject == "You were added to a TraceIQ workspace"
     assert "token" not in text_body
     # Adding them again changes nothing and sends nothing.
     await client.post(f"/api/workspaces/{sc['ws']}/invitations", headers=sc["ADMIN"],
@@ -157,6 +159,26 @@ async def test_malformed_address_is_refused(maker, client, outbox, bad):
     r = await client.post(f"/api/workspaces/{sc['ws']}/invitations", headers=sc["ADMIN"], json={"email": bad})
     assert r.status_code == 400
     assert outbox == []
+
+
+async def test_address_is_tidied_once_for_every_path(maker, client, outbox):
+    sc = await _scene(maker)
+    # Spaces around an existing member's address: found as that member, not
+    # turned into a new invitation for a "different" address.
+    r = await client.post(f"/api/workspaces/{sc['ws']}/invitations", headers=sc["ADMIN"],
+                          json={"email": "  already@acme.test \n"})
+    assert r.json()["status"] == "success"
+    r = await client.post(f"/api/workspaces/{sc['ws']}/invitations", headers=sc["ADMIN"],
+                          json={"email": " new@acme.test "})
+    assert r.json()["status"] == "invited"
+    async with maker() as s:
+        assert [i.email for i in (await s.exec(select(WorkspaceInvitation))).all()] == ["new@acme.test"]
+    # Sign-up tidies the same way, so the invitation matches.
+    reg = await client.post("/api/auth/register", json={
+        "email": " new@acme.test ", "password": "Str0ng-enough-pass!", "full_name": "N", "invite_token": r.json()["token"]})
+    assert reg.status_code == 200, reg.text
+    async with maker() as s:
+        assert (await s.exec(select(User).where(User.email == "new@acme.test"))).one()
 
 
 async def test_resend_replaces_the_link(maker, client, outbox):

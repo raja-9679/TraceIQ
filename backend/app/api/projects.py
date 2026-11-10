@@ -9,7 +9,7 @@ from app.models import User, Project, Workspace, UserWorkspace, ProjectReadWithA
 from app.services.workspace_service import workspace_service
 from app.services.access_service import access_service
 from app.services.rbac_service import rbac_service
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 router = APIRouter()
 
@@ -264,6 +264,14 @@ async def add_user_to_project(project_id: int, user_id: int, access: AccessUpdat
 class ProjectInvite(BaseModel):
     email: str
     role: str = "viewer"  # admin, editor, viewer
+
+    # Tidied once, at the boundary, so every check and lookup downstream sees
+    # the same address (a check on the raw value and a write of the stripped
+    # one could disagree about whose address it is).
+    @field_validator("email")
+    @classmethod
+    def _strip_email(cls, v: str) -> str:
+        return v.strip()
 
 @router.post("/projects/{project_id}/invitations")
 @limiter.limit("30/hour")  # may email an address the caller chooses

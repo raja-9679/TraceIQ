@@ -533,7 +533,7 @@ class WorkspaceService:
                 ws_name, inviter = await WorkspaceService._invite_names(workspace_id, invited_by_id, session)
                 email_sent = await invite_email.send(
                     session, workspace_id=workspace_id, to_email=user.email,
-                    message=invite_email.build_added(workspace_name=ws_name, inviter_name=inviter, role=role))
+                    message=invite_email.build_added(workspace_name=ws_name, inviter_email=inviter, role=role))
             return {"status": "success", "message": "User added to workspace", "email_sent": email_sent}
         else:
             if not mailable:
@@ -583,8 +583,9 @@ class WorkspaceService:
         from app.models import User, Workspace
         ws = await session.get(Workspace, workspace_id)
         inviter = await session.get(User, invited_by_id)
-        return (ws.name if ws else None,
-                (inviter.full_name or inviter.email) if inviter else None)
+        # The inviter's account address, not their display name: see
+        # invite_email (a name is free text and would be mailed as such).
+        return (ws.name if ws else None, inviter.email if inviter else None)
 
     @staticmethod
     async def _email_invitation(invite, token: str, session: AsyncSession) -> bool:
@@ -593,7 +594,7 @@ class WorkspaceService:
         return await invite_email.send(
             session, workspace_id=invite.workspace_id, to_email=invite.email,
             message=invite_email.build_invitation(
-                workspace_name=ws_name, inviter_name=inviter, role=invite.role,
+                workspace_name=ws_name, inviter_email=inviter, role=invite.role,
                 token=token, expires_at=invite.expires_at))
 
     @staticmethod

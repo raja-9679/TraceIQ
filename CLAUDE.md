@@ -1724,12 +1724,17 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
 - **Invitation emails (2026-11-10)** — no migration. `app/services/invite_email.py`:
   a workspace invitation now emails the invitee (`/signup?token=…`, built from
   `FRONTEND_BASE_URL`) and an existing user who is added directly gets an
-  "added to" note; both go through `send_account_email`. The wording is fixed —
-  only the workspace and inviter names come from callers, cut to 80 chars,
-  stripped of line breaks and HTML-escaped — because anyone who may invite can
-  make the server mail an address of their choosing; hence also `30/hour` on
+  "added to" note; both go through `send_account_email`. Anyone who may invite
+  can make the server mail an address of their choosing, so nothing free-text
+  may read as a message of its own: the subject carries NO caller text, the
+  inviter is shown by ACCOUNT EMAIL (never the display name), and the
+  workspace name is reduced to letters/digits/`- _ & ' ( )` (no `. / : @`, so
+  no address can be formed), cut to 80 chars, HTML-escaped; hence also `30/hour` on
   the three invite endpoints and a strict address check for NEW invitations
-  (an existing account is still found by whatever address it has). Responses
+  (an existing account is still found by whatever address it has). Addresses
+  are stripped once at the boundary (validators on `WorkspaceInvite`,
+  `ProjectInvite` and register's `UserCreate`) so a check and a write never
+  see different forms. Responses
   carry `email_sent` (= handed to the queue; false with no SMTP or in a demo
   workspace, which never sends) and the link is STILL returned to the inviter,
   so an instance without email behaves as before. New: `POST

@@ -9,7 +9,7 @@ from app.services.workspace_service import workspace_service
 from app.services.access_service import access_service
 from app.services import key_scope
 from app.core.limiter import limiter
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 router = APIRouter()
 
@@ -31,6 +31,14 @@ class ProjectAccess(BaseModel):
 class WorkspaceInvite(BaseModel):
     email: str
     role: str = "member"
+
+    # Tidied once, at the boundary, so every check and lookup downstream sees
+    # the same address (a check on the raw value and a write of the stripped
+    # one could disagree about whose address it is).
+    @field_validator("email")
+    @classmethod
+    def _strip_email(cls, v: str) -> str:
+        return v.strip()
 
 from app.services.rbac_service import rbac_service
 

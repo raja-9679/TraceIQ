@@ -29,7 +29,7 @@ from app.core.config import settings as app_settings
 from app.core import totp
 from app.core.secrets import encrypt_secret, decrypt_secret
 from jose import jwt, JWTError
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,14 @@ async def _consume_account_token(raw: str, purpose: str, session: AsyncSession) 
 class UserCreate(BaseModel):
     email: str
     password: str
+
+    # Tidied once, at the boundary, so every check and lookup downstream sees
+    # the same address (a check on the raw value and a write of the stripped
+    # one could disagree about whose address it is).
+    @field_validator("email")
+    @classmethod
+    def _strip_email(cls, v: str) -> str:
+        return v.strip()
     full_name: str | None = None
     workspace_name: str | None = None
     organization_name: str | None = None # Preferred over workspace_name

@@ -7,10 +7,13 @@ an instance without email works exactly as before.
 
 Three things shape this module:
 
-* **The text is fixed.** The only caller-supplied words are the workspace name
-  and the inviter's name, both cut short and stripped of line breaks, and
-  HTML-escaped in the HTML part. Anyone who may invite can otherwise make this
-  server send their own wording to an address of their choosing.
+* **The text is fixed.** Anyone who may invite can make this server send mail
+  to an address of their choosing, so nothing they can type freely may read as
+  a message of its own. The subject carries no caller text at all. The inviter
+  is shown by their ACCOUNT EMAIL, never their display name (a name can be set
+  to "IT Security: verify at evil.example"). The workspace name is reduced to
+  letters, digits and a few marks — no dots, slashes, colons or @, so it cannot
+  form a web address — cut short, and HTML-escaped in the HTML part.
 * **Demo workspaces never send** (the rule for every outbound path).
 * **"sent" means handed to the mail queue**, not delivered: the response says
   `email_sent`, and the inviter keeps the link in case the mail never arrives.
@@ -29,10 +32,21 @@ _MAX_NAME = 80
 
 
 def _plain(value: Optional[str], fallback: str) -> str:
-    """One line of printable text: header- and layout-safe."""
-    text = re.sub(r"[\x00-\x1f\x7f  ]+", " ", value or "").strip()
-    text = re.sub(r"\s+", " ", text)
-    return text[:_MAX_NAME] or fallback
+    """A workspace name as inert words: letters, digits, spaces and - _ & ' ( ).
+
+    Everything else becomes a space — in particular . / : @, without which
+    there is no web address, email address or "click here: ..." to act on.
+    """
+    text = re.sub(r"[^\w\s&'()-]+", " ", value or "", flags=re.UNICODE)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:_MAX_NAME].strip() or fallback
+
+
+def _inviter(email: Optional[str]) -> str:
+    """The inviter's account address, or a neutral phrase if it is not one."""
+    from app.settings_models import _EMAIL_RE
+    email = (email or "").strip()
+    return email if len(email) <= 254 and _EMAIL_RE.match(email) else "A colleague"
 
 
 def invitation_link(token: str) -> str:
@@ -60,17 +74,17 @@ def _page(heading: str, paragraphs: list[str], button: Tuple[str, str], foot: st
     )
 
 
-def build_invitation(*, workspace_name: Optional[str], inviter_name: Optional[str],
+def build_invitation(*, workspace_name: Optional[str], inviter_email: Optional[str],
                      role: Optional[str], token: str,
                      expires_at: Optional[datetime]) -> Tuple[str, str, str]:
     """(subject, html, text) for someone who has no account yet."""
     ws = _plain(workspace_name, "a workspace")
-    who = _plain(inviter_name, "A colleague")
+    who = _inviter(inviter_email)
     as_role = _ROLE_LABELS.get((role or "").lower(), "a member")
     link = invitation_link(token)
     until = f" The link works until {expires_at:%d %B %Y}." if expires_at else ""
 
-    subject = f"{who} invited you to {ws} on TraceIQ"
+    subject = "You are invited to a TraceIQ workspace"
     text = (
         f"{who} invited you to join the workspace \"{ws}\" on TraceIQ as {as_role}.\n\n"
         f"Create your account here:\n{link}\n\n"
@@ -88,15 +102,15 @@ def build_invitation(*, workspace_name: Optional[str], inviter_name: Optional[st
     return subject, html_body, text
 
 
-def build_added(*, workspace_name: Optional[str], inviter_name: Optional[str],
+def build_added(*, workspace_name: Optional[str], inviter_email: Optional[str],
                 role: Optional[str]) -> Tuple[str, str, str]:
     """(subject, html, text) for an existing user who was added directly."""
     ws = _plain(workspace_name, "a workspace")
-    who = _plain(inviter_name, "A colleague")
+    who = _inviter(inviter_email)
     as_role = _ROLE_LABELS.get((role or "").lower(), "a member")
     link = app_link()
 
-    subject = f"{who} added you to {ws} on TraceIQ"
+    subject = "You were added to a TraceIQ workspace"
     text = (
         f"{who} added you to the workspace \"{ws}\" on TraceIQ as {as_role}.\n\n"
         f"It is in your workspace list the next time you sign in:\n{link}\n\n"
