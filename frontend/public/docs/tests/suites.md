@@ -69,7 +69,7 @@ Only top-level suites are listed here. Sub-modules are shown inside their suite.
 
 ## A suite's own page
 
-![A suite's page with four numbered parts: 5 the run controls, 6 the Tests, Settings and Audit log tabs, 7 the list of the suite's own tests under its sub-module Todo editing (demo), 8 the selected test Sign in as alice with its steps](../media/tests/suites/suite-annotated.png)
+![A suite's page with four numbered parts: 5 the run controls, 6 the Tests, Settings and Audit log tabs, 7 the list of the suite's own tests under its sub-module Todo editing (demo), 8 the selected test Session cookie is HttpOnly with its steps](../media/tests/suites/suite-annotated.png)
 
 *The demo suite "Web smoke (demo)". The heading shows the suite's name, a pencil to rename it (project admins), and its run mode.*
 
@@ -113,7 +113,7 @@ Only top-level suites are listed here. Sub-modules are shown inside their suite.
 
 ## 7. The list of tests
 
-![Tests in this suite · 7: Sign in as alice, Regression: two todos stay in the list, Reset password email is sent, No serious accessibility violations, Session cookie is HttpOnly, Add a todo with a peach Quarantined label, and Homepage loads, each with its number of steps](../media/tests/suites/test-list.png)
+![Tests in this suite · 7: Session cookie is HttpOnly, Reset password email is sent, Regression: two todos stay in the list, No serious accessibility violations, Sign in as alice, Add a todo with a peach Quarantined label, and Homepage loads, each with its number of steps](../media/tests/suites/test-list.png)
 
 When a suite has sub-modules, they are listed first, under *Sub-modules*. Each row shows the sub-module's name, how many tests and sub-modules it holds, its description and how its tests run; the buttons schedule it (project admins), delete it (project admins), **Run** it on its own, and the arrow opens its page, which looks like this one.
 
@@ -152,7 +152,9 @@ The test's steps in plain words, in the order they run. The grey label says what
 
 A test is a list of **steps**. Each step is one thing a person would do or check in the browser. **Edit steps** (or *New test*) opens the step editor:
 
-![The step editor for the test Add a todo: at the top the name, History, Dataset, Matrix, Priority set to High, Auth setup case, Use auth session ticked, Cancel and Update Test; an Ownership and review box (owner Maya Rao, backup Li Chen, reviewed); then the steps Navigate {{env.BASE_URL}}/login and Fill Input #login-username alice; at the bottom a dark bar with Step, Navigate, Click, Fill, Assert, API, AMP and Script](../media/tests/suites/editor.png)
+![The step editor for the test Add a todo. At the top: Back / Edit Test Case, the title Add a todo with 7 steps, the buttons History, Cancel and Update Test, and below them Dataset and Matrix. A Test details box with the name, Priority set to High, Auth setup case unticked and Use auth session ticked. An Ownership and review box (owner Maya Rao, backup Li Chen, reviewed). The Execution Timeline with the steps Navigate {{env.BASE_URL}}/login, Fill Input #login-username alice and Fill Input #login-password {{secret.ALICE_PASSWORD}}. Pinned to the bottom of the screen, a white bar with a dark Step button and Navigate, Click, Fill, Assert, API, AMP and Script](../media/tests/suites/editor.png)
+
+From the top: the test's name as the heading with *Back* above it and **History**, **Cancel** and **Update Test** beside it (on a wide screen this strip stays in view as you scroll, so you can always save); **Dataset** and **Matrix** under it; a **Test details** box with the name, the priority and the sign-in choices; the **Ownership and review** box; and the **Execution Timeline**, the numbered list of steps. A new test (*New Test Case*) has no History and no Ownership and review box until it is saved, and its button is **Save Test**. Once you change something, an *Unsaved changes* label appears next to the name.
 
 Every step has up to three parts:
 
@@ -172,8 +174,8 @@ What to type, which address to open, or what text to expect.
 >
 > A value such as `{{env.BASE_URL}}` is filled in when the test runs, from the environment it runs in, so the same test works on a test site and the live site. `{{secret.ALICE_PASSWORD}}` is a password kept encrypted in the project's environments: the test never contains the password itself. On the suite page, typed values are shown as "a value" unless they are a placeholder, so passwords typed straight into a step are not displayed.
 
-- **The dark bar** at the bottom adds a step: *Step* (choose the action yourself), or a shortcut for the common ones. Under each step, *Up*, *Down*, *Add below* and *Delete* rearrange the list.
-- **Dataset** runs the test once for every row of a small table of values, and **Matrix** picks browsers and devices for this test only.
+- **The add-step bar**, the white bar that stays at the bottom of the screen while you scroll through the steps, adds a step at the end: the dark *Step* button (choose the action yourself), or a shortcut for the common ones (*Navigate*, *Click*, *Fill*, *Assert*, *API*, *AMP*, *Script*). Under each step, *Up*, *Down*, *Add below* and *Delete* rearrange the list.
+- **Dataset** runs the test once for every row of a small table of values, and **Matrix** picks browsers and devices for this test only. Each opens its own box above the Execution Timeline (already open when the test has one); a tick after the name (*Dataset ✓*) means one is set.
 - **Priority** (None, Critical, High, Medium, Low): critical tests count for release readiness and the quality gate's critical-test rule.
 - **Auth setup case** marks a test that signs in: when it passes, other tests can start already signed in (*Use auth session*).
 - **History** shows earlier versions of the test and can bring one back.
@@ -210,7 +212,7 @@ Nothing is saved until you press **Save Test** (or **Update Test** for an existi
 
 1. Open the suite it belongs in and press **New test**.
 2. Give it a name that says what it proves, for example "Sign in as alice".
-3. Add the steps in order with the dark bar: usually *Navigate* first, then the clicks and typing, then at least one check (*Assert*).
+3. Add the steps in order with the bar at the bottom of the screen: usually *Navigate* first, then the clicks and typing, then at least one check (*Assert*).
 4. Press **Save Test**, then **Run now** to see it work.
 
 ### …check a page as a signed-in subscriber
@@ -272,7 +274,8 @@ What the walkthrough says, in order. The video and every picture on this page ar
 6. Quarantined means the test is flaky and set aside: suite runs skip it for now.
 7. Run suite runs every test here. Run now runs only the test you picked.
 8. Edit steps opens the step editor.
-9. Each step is one action, such as opening a page, clicking or typing.
-10. Next to the action: where on the page it happens, and what to type.
-11. The dark bar at the bottom adds a step. Nothing is saved until you press Update Test.
-12. Back on the suite page, nothing has changed.
+9. The top holds the name, priority and who looks after the test. Below them, the steps.
+10. Each step is one action, such as opening a page, clicking or typing.
+11. Next to the action: where on the page it happens, and what to type.
+12. The bar pinned to the bottom of the screen adds a step. Nothing is saved until you press Update Test.
+13. Back on the suite page, nothing has changed.

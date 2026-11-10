@@ -117,7 +117,7 @@
 
         <h2 id="suite-page" data-toc="A suite's own page">A suite's own page</h2>
         <figure>
-          <div class="frame"><img src="../media/tests/suites/suite-annotated.png" alt="A suite's page with four numbered parts: 5 the run controls, 6 the Tests, Settings and Audit log tabs, 7 the list of the suite's own tests under its sub-module Todo editing (demo), 8 the selected test Sign in as alice with its steps" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/tests/suites/suite-annotated.png" alt="A suite's page with four numbered parts: 5 the run controls, 6 the Tests, Settings and Audit log tabs, 7 the list of the suite's own tests under its sub-module Todo editing (demo), 8 the selected test Session cookie is HttpOnly with its steps" loading="lazy" width="1440" height="900"></div>
           <figcaption>The demo suite "Web smoke (demo)". The heading shows the suite's name, a pencil to rename it (project admins), and its run mode.</figcaption>
         </figure>
 
@@ -175,7 +175,7 @@
 
         <div class="part"><span class="num">7</span><h2 id="list" data-toc="⑦ The list of tests">The list of tests</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/tests/suites/test-list.png" alt="Tests in this suite · 7: Sign in as alice, Regression: two todos stay in the list, Reset password email is sent, No serious accessibility violations, Session cookie is HttpOnly, Add a todo with a peach Quarantined label, and Homepage loads, each with its number of steps" loading="lazy"></div>
+          <div class="frame small"><img src="../media/tests/suites/test-list.png" alt="Tests in this suite · 7: Session cookie is HttpOnly, Reset password email is sent, Regression: two todos stay in the list, No serious accessibility violations, Sign in as alice, Add a todo with a peach Quarantined label, and Homepage loads, each with its number of steps" loading="lazy"></div>
         </figure>
         <p>When a suite has sub-modules, they are listed first, under <em>Sub-modules</em>. Each
           row shows the sub-module's name, how many tests and sub-modules it holds, its
@@ -229,8 +229,17 @@
           check in the browser. <strong>Edit steps</strong> (or <em>New test</em>) opens the step
           editor:</p>
         <figure>
-          <div class="frame"><img src="../media/tests/suites/editor.png" alt="The step editor for the test Add a todo: at the top the name, History, Dataset, Matrix, Priority set to High, Auth setup case, Use auth session ticked, Cancel and Update Test; an Ownership and review box (owner Maya Rao, backup Li Chen, reviewed); then the steps Navigate {{env.BASE_URL}}/login and Fill Input #login-username alice; at the bottom a dark bar with Step, Navigate, Click, Fill, Assert, API, AMP and Script" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/tests/suites/editor.png" alt="The step editor for the test Add a todo. At the top: Back / Edit Test Case, the title Add a todo with 7 steps, the buttons History, Cancel and Update Test, and below them Dataset and Matrix. A Test details box with the name, Priority set to High, Auth setup case unticked and Use auth session ticked. An Ownership and review box (owner Maya Rao, backup Li Chen, reviewed). The Execution Timeline with the steps Navigate {{env.BASE_URL}}/login, Fill Input #login-username alice and Fill Input #login-password {{secret.ALICE_PASSWORD}}. Pinned to the bottom of the screen, a white bar with a dark Step button and Navigate, Click, Fill, Assert, API, AMP and Script" loading="lazy" width="1440" height="1240"></div>
         </figure>
+        <p>From the top: the test's name as the heading with <em>Back</em> above it and
+          <strong>History</strong>, <strong>Cancel</strong> and <strong>Update Test</strong> beside it
+          (on a wide screen this strip stays in view as you scroll, so you can always save);
+          <strong>Dataset</strong> and <strong>Matrix</strong> under it; a <strong>Test details</strong>
+          box with the name, the priority and the sign-in choices; the <strong>Ownership and review</strong>
+          box; and the <strong>Execution Timeline</strong>, the numbered list of steps. A new test
+          (<em>New Test Case</em>) has no History and no Ownership and review box until it is saved,
+          and its button is <strong>Save Test</strong>. Once you change something, an
+          <em>Unsaved changes</em> label appears next to the name.</p>
         <p>Every step has up to three parts:</p>
         <dl class="terms">
           <dt>The action</dt><dd>What to do: <em>Navigate</em> (open a web address), <em>Click</em>, <em>Fill input</em> (type into a field), <em>Expect visible</em> and other checks, an API request, and many more in the step's drop-down.</dd>
@@ -248,8 +257,8 @@
             into a step are not displayed.</p></div>
         </div>
         <ul>
-          <li><strong>The dark bar</strong> at the bottom adds a step: <em>Step</em> (choose the action yourself), or a shortcut for the common ones. Under each step, <em>Up</em>, <em>Down</em>, <em>Add below</em> and <em>Delete</em> rearrange the list.</li>
-          <li><strong>Dataset</strong> runs the test once for every row of a small table of values, and <strong>Matrix</strong> picks browsers and devices for this test only.</li>
+          <li><strong>The add-step bar</strong>, the white bar that stays at the bottom of the screen while you scroll through the steps, adds a step at the end: the dark <em>Step</em> button (choose the action yourself), or a shortcut for the common ones (<em>Navigate</em>, <em>Click</em>, <em>Fill</em>, <em>Assert</em>, <em>API</em>, <em>AMP</em>, <em>Script</em>). Under each step, <em>Up</em>, <em>Down</em>, <em>Add below</em> and <em>Delete</em> rearrange the list.</li>
+          <li><strong>Dataset</strong> runs the test once for every row of a small table of values, and <strong>Matrix</strong> picks browsers and devices for this test only. Each opens its own box above the Execution Timeline (already open when the test has one); a tick after the name (<em>Dataset ✓</em>) means one is set.</li>
           <li><strong>Priority</strong> (None, Critical, High, Medium, Low): critical tests count for release readiness and the quality gate's critical-test rule.</li>
           <li><strong>Auth setup case</strong> marks a test that signs in: when it passes, other tests can start already signed in (<em>Use auth session</em>).</li>
           <li><strong>History</strong> shows earlier versions of the test and can bring one back.</li>
@@ -303,7 +312,7 @@
         <ol class="steps">
           <li>Open the suite it belongs in and press <strong>New test</strong>.</li>
           <li>Give it a name that says what it proves, for example "Sign in as alice".</li>
-          <li>Add the steps in order with the dark bar: usually <em>Navigate</em> first, then the clicks and typing, then at least one check (<em>Assert</em>).</li>
+          <li>Add the steps in order with the bar at the bottom of the screen: usually <em>Navigate</em> first, then the clicks and typing, then at least one check (<em>Assert</em>).</li>
           <li>Press <strong>Save Test</strong>, then <strong>Run now</strong> to see it work.</li>
         </ol>
         <h3>…check a page as a signed-in subscriber</h3>

@@ -56,41 +56,42 @@
           <div class="mini"><h4>Developers</h4><p>See which page got slower or heavier, and which run it started in.</p></div>
           <div class="mini"><h4>Designers</h4><p>Turn every component in the design system's Storybook into a visual and accessibility check.</p></div>
         </div>
-        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → Frontend quality</strong>.
-          The page's own heading says <strong>Frontend Quality</strong>.</p>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → Frontend quality</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The demo's web project has one saved crawl of example.com with two runs, a month of page
-          measurements and a few selectors that broke, so every tab has something to show. The
-          numbers match the sections below.</p>
+        <p>The page always works on the project chosen at the top of the sidebar. It has four
+          tabs; each one starts with a short explanation strip, then a list on the left and the
+          selected item in a card on the right (the first item is already selected). The demo's
+          web project has one saved crawl of example.com, a month of page measurements and a few
+          selectors that broke, so every tab has something to show. The numbers match the
+          sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/page-annotated.png" alt="The Frontend Quality page with four numbered parts: 1 the Project picker, 2 the four tabs, 3 the crawler's description and New crawl button, 4 the crawl example.com link check (demo) with its latest run and its table of problems" loading="lazy" width="1440" height="900"></div>
-          <figcaption>The Frontend Quality page for the demo's web project, on its first tab. Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/tests/frontend-quality/page-annotated.png" alt="The Frontend quality page with six numbered parts: 1 the four tabs, 2 the crawler's explanation and the New crawl button, 3 the Crawls list, 4 the crawl example.com link check (demo) with Run now and Delete, 5 the Run menu with the run's counts, 6 the problem filters and the table of problems" loading="lazy" width="1440" height="1500"></div>
+          <figcaption>The Frontend quality page for the demo's web project, on its first tab. Click the picture to see it larger.</figcaption>
         </figure>
 
-        <div class="part"><span class="num">1</span><h2 id="project" data-toc="① Project">Project</h2></div>
-        <p>Which project the page shows. It is the same choice as the project picker at the top of
-          the sidebar: changing it here changes it there too.</p>
-
-        <div class="part"><span class="num">2</span><h2 id="tabs" data-toc="② The four tabs">The four tabs</h2></div>
+        <div class="part"><span class="num">1</span><h2 id="tabs" data-toc="① The four tabs">The four tabs</h2></div>
+        <p>Under the page title. To see another project, change the project at the top of the
+          sidebar.</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:28%">Tab</th><th>What it shows</th></tr></thead>
             <tbody>
-              <tr><td><strong>Link &amp; asset crawler</strong></td><td>Visits your site page by page and checks every link, picture, script and style sheet. Shown first.</td></tr>
-              <tr><td><strong>Page budgets</strong></td><td>Speed and size of pages, measured every time a test with a <em>check-page-budget</em> step runs, against the limits ("budgets") set in that step.</td></tr>
-              <tr><td><strong>Selector health</strong></td><td>The page elements tests keep failing to find, or that TraceIQ keeps having to repair.</td></tr>
-              <tr><td><strong>Storybook</strong></td><td>Makes one test per component story from your Storybook (a catalogue of a site's building blocks).</td></tr>
+              <tr><td><strong>Link &amp; asset crawler</strong></td><td>Visits your site page by page and checks every link, picture, script and style sheet. Shown first, and described in parts ② to ⑥.</td></tr>
+              <tr><td><strong>Page budgets</strong></td><td>Speed and size of pages, measured every time a test with a <em>check-page-budget</em> step runs, against the limits ("budgets") set in that step. See <a href="#budgets">Page budgets</a>.</td></tr>
+              <tr><td><strong>Selector health</strong></td><td>The page elements tests keep failing to find, or that TraceIQ keeps having to repair. See <a href="#selectors">Selector health</a>.</td></tr>
+              <tr><td><strong>Storybook</strong></td><td>Makes one test per component story from your Storybook (a catalogue of a site's building blocks). See <a href="#storybook">Storybook</a>.</td></tr>
             </tbody>
           </table>
         </div>
 
-        <div class="part"><span class="num">3</span><h2 id="crawler" data-toc="③ The crawler">The crawler</h2></div>
+        <div class="part"><span class="num">2</span><h2 id="crawler" data-toc="② New crawl">New crawl</h2></div>
         <p>A <strong>crawl</strong> starts at one address, follows the links it finds to other pages
-          of the same site, and checks everything each page uses. <strong>New crawl</strong> opens its
-          settings:</p>
+          of the same site, and checks everything each page uses. The strip says so, and
+          <strong>New crawl</strong> opens its settings in a card above the list (the button is
+          hidden while the card is open):</p>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/crawl-form.png" alt="The New crawl form: Name, Start URL with the note Must be one of this project's hosts: example.com, localhost; Max depth 3, Max pages 100, Delay between requests to one host 250, Slow threshold 3000, Also crawl these project hosts, Schedule (cron, UTC, optional), the ticked boxes Respect robots.txt and Check links to other sites, and Save crawl and Cancel" loading="lazy"></div>
+          <div class="frame"><img src="../media/tests/frontend-quality/crawl-form.png" alt="The New crawl card: Name, Start URL with the note Must be one of this project's hosts: example.com, localhost; Max depth 3, Max pages 100, Delay between requests to one host 250, Slow threshold 3000, Also crawl these project hosts, Schedule (cron, UTC, optional), the ticked boxes Respect robots.txt and Check links to other sites, and Save crawl and Cancel" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>
@@ -107,18 +108,34 @@
             </tbody>
           </table>
         </div>
+        <p><strong>Save crawl</strong> keeps it; <strong>Cancel</strong> closes the card.</p>
 
-        <div class="part"><span class="num">4</span><h2 id="crawls" data-toc="④ Crawls and their problems">Crawls and their problems</h2></div>
+        <div class="part"><span class="num">3</span><h2 id="crawls" data-toc="③ The list of crawls">The list of crawls</h2></div>
+        <p>The project's saved crawls, each with its start address, its schedule if it has one,
+          and how its last run went (<em>completed</em>, <em>running</em>, <em>error</em>, or
+          <em>not run</em>). Click one to open it on the right.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="crawl" data-toc="④ The crawl">The crawl</h2></div>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/crawl.png" alt="The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #4, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked" loading="lazy"></div>
+          <div class="frame"><img src="../media/tests/frontend-quality/crawl.png" alt="The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #6, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked" loading="lazy"></div>
           <figcaption>The demo's crawl, on its latest run.</figcaption>
         </figure>
-        <p>Each saved crawl is a box with its start address and limits, <strong>Run now</strong> and
-          <strong>Delete</strong>. After a run, a <strong>Run</strong> menu picks one of its runs and
-          the box shows how many pages were crawled and links checked, then a table of problems with
-          what was wrong, the address, the kind of element, the status, the time it took, and the
-          page it was found on. Tick the problem types or element kinds to filter, or search the
-          addresses. The table shows 100 problems at a time.</p>
+        <p>The card starts with the crawl's name, its start address, depth and page limit (and its
+          schedule, or "ignores robots.txt", when set). <strong>Run now</strong> starts a run;
+          <strong>Delete</strong> asks first, then deletes the crawl and its history.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="run" data-toc="⑤ Run">Run</h2></div>
+        <p>The <strong>Run</strong> menu picks one of the crawl's runs (the newest is shown first).
+          For a finished run it says how many pages were crawled and links checked, and whether
+          it stopped at a limit or skipped pages because of robots.txt. While a run is going it
+          shows <em>running…</em> and the page checks again every 5 seconds. A crawl that has never
+          run says "This crawl has not run yet."</p>
+
+        <div class="part"><span class="num">6</span><h2 id="problems" data-toc="⑥ Problems">Problems</h2></div>
+        <p>A table of problems with what was wrong, the address, the kind of element, the status,
+          the time it took, and the page it was found on. Tick the problem types (each shows its
+          count) or element kinds to filter, or search the addresses. The table shows 100 problems
+          at a time.</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:30%">Problem</th><th>Meaning</th></tr></thead>
@@ -135,38 +152,42 @@
 
         <h2 id="budgets" data-toc="Page budgets">Page budgets</h2>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/budgets.png" alt="The Page budgets tab: the page https://example.com/ on the left (60 samples, 8 over budget); on the right its latest run: LCP 1749 ms, CLS 0.044, INP no data, TTFB 141 ms, page weight 884 KB, 23 requests, each with small bars for recent runs; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description" loading="lazy"></div>
+          <div class="frame"><img src="../media/tests/frontend-quality/budgets.png" alt="The Page budgets tab: the Pages list with https://example.com/ (default, 31 samples, 6 over budget); on the right its card: LCP 1749 ms, CLS 0.044, INP no data, TTFB 141 ms, page weight 884 KB, 23 requests, each with small bars for recent runs; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description; Latest from run #800 (Homepage loads)" loading="lazy"></div>
         </figure>
         <p>In the demo, the test <em>Homepage loads</em> measures example.com's home page. Nothing
           appears here until a test contains a <strong>check-page-budget</strong> step. Then
-          every run of that test measures the page, and this tab lists the pages measured in the last
-          30 days, those that went over budget first. Click a page to see, for its latest run and as
-          small bars for recent runs:</p>
+          every run of that test measures the page, and the <strong>Pages</strong> list shows the
+          pages measured in the last 30 days, those that went over budget first, with their number
+          of samples and how many were over budget. Click a page to see in its card, for its latest
+          run and as small bars for up to 16 recent runs:</p>
         <ul>
-          <li><strong>LCP</strong> (how long the main content takes to appear), <strong>CLS</strong> (how much the layout jumps while loading), <strong>INP</strong> (how quickly the page reacts to a click), <strong>TTFB</strong> (how long the server takes to start answering), <strong>page weight</strong> and <strong>number of requests</strong>. A red bar is a run that went over that budget.</li>
+          <li><strong>LCP</strong> (how long the main content takes to appear), <strong>CLS</strong> (how much the layout jumps while loading), <strong>INP</strong> (how quickly the page reacts to a click), <strong>TTFB</strong> (how long the server takes to start answering), <strong>page weight</strong> and <strong>request count</strong>. A red bar is a run that went over that budget.</li>
           <li><strong>Budgets</strong>: each limit set in the step, and whether the page was within it or over.</li>
           <li><strong>SEO checks</strong>: basic search-engine checks such as a page title. They only fail the test if the step says so.</li>
+          <li>A link to the run the latest numbers come from.</li>
         </ul>
 
         <h2 id="selectors" data-toc="Selector health">Selector health</h2>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/selectors.png" alt="The Selector health tab: a Window menu set to Last 90 days, the line 2 selectors, 1 heal, 7 failures, and two selectors: #todo-list li in Add a todo (6 failed, 1 heal proposal) with the sturdier locator [data-testid=todo-item] and a Copy button, and h1 in Homepage loads (1 failed) with role=heading[name=Example Domains]" loading="lazy"></div>
+          <div class="frame"><img src="../media/tests/frontend-quality/selectors.png" alt="The Selector health tab: a Window menu set to Last 90 days, the line 2 selectors, 1 heal, 7 failures, the list Selectors, worst first with #todo-list li (Add a todo, 6 failed, 1 heal proposal) and h1 (Homepage loads, 1 failed); on the right the card for #todo-list li: Failed 6, Heal proposals 1, Runtime-healed 0, heals and failures per week, the sturdier locator [data-testid=todo-item] with a Copy button, and recent runs" loading="lazy"></div>
         </figure>
         <p>A <strong>selector</strong> is the short code a test step uses to find an element on the
-          page. When a page changes, selectors break. This tab lists the ones with the most trouble
-          in the chosen window (30, 90, 180 or 365 days), worst first. For each one: the test and
-          step it belongs to, how often it failed, how often TraceIQ proposed or made a repair, a
-          bar per week, reasons it is fragile, and <strong>sturdier locators</strong> worked out from
-          the page as it was when the step failed, with a <strong>Copy</strong> button. Suggestions are
-          never applied for you: edit the test to use one.</p>
+          page. When a page changes, selectors break. The strip has a <strong>Window</strong> menu
+          (30, 90, 180 or 365 days) and the totals for that window; the list shows the selectors
+          with the most trouble, worst first. Click one to see in its card: the test (a link to
+          edit it) and step it belongs to, how often it failed, how often TraceIQ proposed a repair
+          or repaired it during a run, a bar per week, reasons it is fragile, <strong>sturdier
+          locators</strong> worked out from the page as it was when the step failed, each with a
+          <strong>Copy</strong> button, and links to recent runs. Suggestions are never applied for
+          you: edit the test to use one.</p>
 
         <h2 id="storybook" data-toc="Storybook">Storybook</h2>
         <figure>
           <div class="frame"><img src="../media/tests/frontend-quality/storybook.png" alt="The Storybook tab: a description, a Storybook URL field and a Load stories button" loading="lazy"></div>
         </figure>
         <ol class="steps">
-          <li>Enter the address of your Storybook (it must be on one of the project's sites) and press <strong>Load stories</strong>.</li>
-          <li>Tick the stories you want, choose the suite to add the tests to, and whether each test checks the look (<strong>Visual match</strong>), <strong>Accessibility</strong>, or both.</li>
+          <li>Enter the address of your Storybook (it must be on one of the project's sites) and press <strong>Load stories</strong>. A <strong>Stories</strong> card appears below.</li>
+          <li>Tick the stories you want (<strong>Filter stories</strong> and <strong>Select all shown</strong> help), choose the suite under <strong>Add cases to suite</strong>, and whether each test checks the look (<strong>Visual match</strong>), <strong>Accessibility</strong>, or both.</li>
           <li>Press <strong>Generate</strong>. You get one test per story. Generating again for a story updates its existing test instead of making a second one, and keeps its saved reference picture.</li>
         </ol>
 
@@ -186,7 +207,7 @@
         <ol class="steps">
           <li>On the <strong>Link &amp; asset crawler</strong> tab, press <strong>New crawl</strong>.</li>
           <li>Give it a name, enter the home page as the <strong>Start URL</strong>, and under <strong>Schedule</strong> type <code>0 3 * * *</code> (3 a.m. UTC every day).</li>
-          <li>Press <strong>Save crawl</strong>, then <strong>Run now</strong> for a first result. The box shows "running…" until it is done.</li>
+          <li>Press <strong>Save crawl</strong>, pick the crawl in the list, then press <strong>Run now</strong> in its card for a first result. The card shows "running…" until it is done.</li>
           <li>Tick <strong>Broken (4xx/5xx)</strong> to see only the links that need fixing, and the page each was found on.</li>
         </ol>
         <h3>…keep a page fast</h3>
@@ -215,7 +236,7 @@
         </div>
 
         <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
-        <p class="footer-note">Describes the Frontend quality page as of October 2026.</p>
+        <p class="footer-note">Describes the Frontend quality page as of November 2026.</p>
       </div>
     </main>
 

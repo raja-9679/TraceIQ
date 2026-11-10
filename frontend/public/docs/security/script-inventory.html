@@ -64,51 +64,102 @@
           <div class="mini"><h4>Developers</h4><p>See which scripts changed after a release, and approve the ones that should be there.</p></div>
           <div class="mini"><h4>E-commerce teams</h4><p>Hear quickly if the checkout page shows text it shouldn't.</p></div>
         </div>
-        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Script inventory</strong>.
-          The page's own heading says <strong>Script Inventory</strong>.</p>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Script inventory</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The page opens on the list of pages the project watches; the demo's web project
-          watches one checkout page:</p>
+        <p>The page always works on the project chosen at the top of the sidebar. On the left is
+          the list of pages that project watches; on the right, the selected page. When you
+          arrive, the first page in the list is already open. The header counts the monitored
+          pages and their unapproved scripts. The demo's web project watches one checkout page:</p>
         <figure>
-          <div class="frame"><img src="../media/security/script-inventory/page.png" alt="The Script Inventory page with a Monitor a page button, one monitored page in the list (Checkout page (demo), result alert, 4 scripts, 2 unapproved), the line Choose a page, or start monitoring one, and a Project menu" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/security/script-inventory/page.png" alt="The Script inventory page: 1 monitored page, 2 unapproved scripts, a Monitor a page button, the Monitored pages list with Checkout page (demo), 4 scripts, 2 unapproved, result alert, and on the right that page open on its Scripts tab" loading="lazy" width="1440" height="900"></div>
         </figure>
-        <p>The picture below shows the form behind <strong>Monitor a page</strong>, filled in for a
-          checkout page with defacement checks switched on. The numbers match the sections below.</p>
+        <p>The numbers in the picture below match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/security/script-inventory/page-annotated.png" alt="The Script Inventory page with the Monitor a page form, with five numbered parts: 1 the Monitor a page button, 2 the name, URL, schedule and alert email fields, 3 the Scheduled checks, Script inventory and Defacement checks boxes, 4 the Defacement settings, 5 the Save page button" loading="lazy" width="1440" height="1000"></div>
-          <figcaption>A page being set up in the demo's web project (not saved). Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/security/script-inventory/page-annotated.png" alt="The Script inventory page with six numbered parts: 1 the Monitor a page button, 2 the Monitored pages list, 3 the page's name, result, address and last check, 4 the Check now and Delete page buttons, 5 the Scripts, Change history and Settings and defacement tabs, 6 the table of scripts" loading="lazy" width="1440" height="1300"></div>
+          <figcaption>The demo's checkout page. Click the picture to see it larger.</figcaption>
         </figure>
 
-        <div class="part"><span class="num">1</span><h2 id="pages" data-toc="① Monitored pages">Monitored pages</h2></div>
-        <p>The pages this project watches, each with its last result and the number of scripts
-          (and how many are unapproved). Click one to open it; <strong>Monitor a page</strong>
-          adds one. The <strong>Project</strong> menu at the top right is the same choice as the
-          project picker in the sidebar.</p>
+        <div class="part"><span class="num">1</span><h2 id="new" data-toc="① Monitor a page">Monitor a page</h2></div>
+        <p><strong>Monitor a page</strong>, at the top right, opens an empty form on the right to
+          start watching another page (see <a href="#settings">The page's settings</a>). It is
+          there only when a project is chosen in the sidebar.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="pages" data-toc="② Monitored pages">Monitored pages</h2></div>
+        <p>The pages this project watches, each with its number of scripts (and how many are
+          unapproved) and its last result. Click one to open it on the right. To see another
+          project's pages, change the project at the top of the sidebar.</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Result</th><th>What it means</th></tr></thead>
             <tbody>
               <tr><td><span class="pill t-mint">ok</span></td><td>Nothing changed since the last check.</td></tr>
               <tr><td><span class="pill t-butter">changed</span></td><td>Something harmless changed: a script disappeared, or a security header changed.</td></tr>
-              <tr><td><span class="pill t-pink">alert</span></td><td>A new script appeared, a script's content changed, or a defacement check failed. The alert people are told.</td></tr>
-              <tr><td><span class="pill t-pink">error</span></td><td>The check couldn't be done, for example the site is no longer on the allowed list or no test machine answered. The reason is shown on the page.</td></tr>
+              <tr><td><span class="pill t-peach">alert</span></td><td>A new script appeared, a script's content changed, or a defacement check failed. The alert people are told.</td></tr>
+              <tr><td><span class="pill t-peach">error</span></td><td>The check couldn't be done, for example the site is no longer on the allowed list or no test machine answered. The reason is shown on the page.</td></tr>
               <tr><td><span class="pill t-neutral">new</span></td><td>Not checked yet.</td></tr>
             </tbody>
           </table>
         </div>
 
-        <div class="part"><span class="num">2</span><h2 id="fields" data-toc="② The page to watch">The page to watch</h2></div>
+        <div class="part"><span class="num">3</span><h2 id="page" data-toc="③ The page and its result">The page and its result</h2></div>
+        <p>The card on the right starts with the page's name and last result, then its address,
+          when it was last checked and, with defacement checks on, how similar its text was to
+          the baseline.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="buttons" data-toc="④ Check now and Delete page">Check now and Delete page</h2></div>
+        <ul>
+          <li><strong>Check now</strong> asks for a check straight away; the button then says
+            <em>Check queued</em>. The result appears when a test machine has visited the page.</li>
+          <li><strong>Accept current content as baseline</strong> appears only with defacement
+            checks on: after you change the page's text on purpose, it starts the comparison
+            afresh.</li>
+          <li><strong>Delete page</strong> stops watching the page, after asking, and deletes its
+            inventory and history.</li>
+        </ul>
+
+        <div class="part"><span class="num">5</span><h2 id="tabs" data-toc="⑤ Scripts, Change history, Settings">Scripts, Change history, Settings &amp; defacement</h2></div>
+        <p>Three tabs inside the card. The card opens on <strong>Scripts</strong> (with how many
+          there are).</p>
+        <ul>
+          <li><strong>Change history</strong>: every script added, changed, removed or approved,
+            every header change and every defacement alert, newest first, with its time.</li>
+          <li><strong>Settings &amp; defacement</strong>: the page's settings, the same fields as
+            the <em>Monitor a page</em> form (see <a href="#settings">below</a>). Saving them
+            returns to the Scripts tab.</li>
+        </ul>
         <figure>
-          <div class="frame"><img src="../media/security/script-inventory/fields.png" alt="Fields: Name (Checkout), URL (https://shop.example.com/checkout), Check schedule (cron, UTC; PCI 11.6.1 wants at least weekly) 0 6 * * 1, and Alert emails" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/script-inventory/history.png" alt="The Change history tab: 2026-10-24, Script changed: https://tags.example.org/gtm.js; 2026-10-12, Baseline: Inventory started with 4 script(s)" loading="lazy"></div>
+          <figcaption>The demo's change history: the tag manager script changed, so it lost its approval and the page is on alert.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">6</span><h2 id="scripts" data-toc="⑥ The scripts">The scripts</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/script-inventory/monitored-page.png" alt="The card for Checkout page (demo), result alert, https://example.com/checkout, last checked 2026-10-24, with Check now and Delete page and the tabs Scripts, Change history, Settings and defacement. The Scripts tab lists four scripts: https://tags.example.org/gtm.js (external, third party) and an inline script, both unapproved with an Approve… link; https://payments.example.net/v3/checkout.js (third party) and https://example.com/static/app.js (first party), both approved with their justification and a Withdraw approval link. Each has the start of its SHA-384 fingerprint and SRI none. At the bottom, Security headers last seen" loading="lazy"></div>
+          <figcaption>The demo's checkout page: two scripts approved with a reason, two waiting for approval.</figcaption>
+        </figure>
+        <p>One row per script, unapproved ones first:</p>
+        <ul>
+          <li><strong>Script</strong>: its address, or "inline script" for code written into the page itself; whether it is <em>external</em> or <em>inline</em>, <em>first party</em> (from your own site) or <em>third party</em>, and the day it was first seen. An approved script shows its justification underneath.</li>
+          <li><strong>SHA-384</strong>: the script's fingerprint; any change to the code changes it.</li>
+          <li><strong>SRI</strong>: whether the page itself tells the browser to check that fingerprint ("none" means it doesn't).</li>
+          <li><strong>Approval</strong>: <span class="pill t-mint">approved</span> (with <em>Withdraw approval</em>) or <span class="pill t-peach">unapproved</span> (with <em>Approve…</em>).</li>
+        </ul>
+        <p>Tick <strong>Include removed scripts</strong> above the table to see ones that have gone.
+          <strong>Security headers last seen</strong>, below it, opens to list the protective
+          headers the page sent.</p>
+
+        <h3 id="settings">The page's settings</h3>
+        <p>The <em>Monitor a page</em> form and the <em>Settings &amp; defacement</em> tab have the
+          same fields.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/script-inventory/fields.png" alt="Fields: Name (Checkout), URL (host must be allowlisted) https://shop.example.com/checkout, Check schedule (cron, UTC; PCI 11.6.1 wants at least weekly) 0 6 * * 1, and Alert emails" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Name</strong> and <strong>URL</strong> (both required). The page's site must be on the project's allowed list (<em>Scans &amp; findings → Authorization</em>); otherwise saving is refused.</li>
           <li><strong>Check schedule</strong>: a <em>cron</em> expression in UTC. The standard <code>0 6 * * 1</code> is every Monday at 06:00 UTC, which meets the weekly minimum. It can't be more often than once an hour.</li>
           <li><strong>Alert emails</strong>: who is emailed when the result is <em>alert</em>. The project's Slack or Teams channel is told too, if it has one.</li>
         </ul>
-
-        <div class="part"><span class="num">3</span><h2 id="what" data-toc="③ What to check">What to check</h2></div>
         <figure>
           <div class="frame small"><img src="../media/security/script-inventory/toggles.png" alt="Three ticked boxes: Scheduled checks, Script inventory, Defacement checks" loading="lazy"></div>
         </figure>
@@ -117,44 +168,21 @@
           <li><strong>Script inventory</strong>: record every script (on by default).</li>
           <li><strong>Defacement checks</strong>: also look at the page's text (off by default). <em>Defacement</em> is when an attacker changes what a page says, for example to their own message.</li>
         </ul>
-
-        <div class="part"><span class="num">4</span><h2 id="defacement" data-toc="④ Defacement">Defacement</h2></div>
         <figure>
           <div class="frame"><img src="../media/security/script-inventory/defacement.png" alt="Defacement settings: a slider Alert when text similarity to the baseline drops below 50%, a box for forbidden keywords (one per line, plain text), and a box for element checks (selector | must contain | forbidden; forbidden)" loading="lazy"></div>
         </figure>
-        <p>The first check records the page's text as the <strong>baseline</strong>. Later checks
-          compare against it:</p>
+        <p>With defacement checks on, the first check records the page's text as the
+          <strong>baseline</strong>. Later checks compare against it:</p>
         <ul>
           <li><strong>Similarity</strong>: alert when the text is less than this much like the baseline (standard 50%).</li>
           <li><strong>Forbidden keywords</strong>: words that should never be on the page, such as "hacked by". One per line.</li>
           <li><strong>Element checks</strong>: one per line, a part of the page (a <em>selector</em>), the text it must contain, and words it must not contain, separated by <code>|</code>. For example <code>h1 | Checkout</code>.</li>
         </ul>
         <p>All of these are plain text comparisons, ignoring capital letters. A failed check is a
-          high-severity <em>Possible defacement</em> finding. When you have changed the page on
-          purpose, <strong>Accept current content as baseline</strong> (on the page's view) starts
-          the comparison afresh.</p>
-
-        <div class="part"><span class="num">5</span><h2 id="save" data-toc="⑤ Save page">Save page</h2></div>
-        <p>Nothing is kept until you press <strong>Save page</strong>. The first check happens at the
-          next time in the schedule; press <strong>Check now</strong> on the saved page to run it at once.</p>
-
-        <h3 id="inside">A monitored page</h3>
-        <p>A saved page shows its result, when it was last checked, and the buttons
-          <strong>Check now</strong> and <strong>Delete page</strong> (which asks first and
-          deletes its inventory and history). It has three tabs:</p>
-        <ul>
-          <li><strong>Scripts</strong>: one row per script, unapproved ones first. The <em>script</em> is its address, or "inline script" for code written into the page itself; it is marked <em>first party</em> (from your own site) or <em>third party</em>, with the day it was first seen. <em>SHA-384</em> is the script's fingerprint: any change to the code changes it. <em>SRI</em> says whether the page itself tells the browser to check that fingerprint ("none" means it doesn't). <em>Approval</em> is <span class="pill t-mint">approved</span> or <span class="pill t-pink">unapproved</span>. Tick <strong>Include removed scripts</strong> to see ones that have gone. <strong>Security headers last seen</strong> lists the protective headers the page sent.</li>
-          <li><strong>Change history</strong>: every script added, changed, removed or approved, every header change and every defacement alert, with its time.</li>
-          <li><strong>Settings &amp; defacement</strong>: the same form as above.</li>
-        </ul>
-        <figure>
-          <div class="frame"><img src="../media/security/script-inventory/monitored-page.png" alt="Checkout page (demo), result alert, https://example.com/checkout, last checked 2026-10-20, with Check now and Delete page buttons and the tabs Scripts, Change history, Settings and defacement. The Scripts tab lists four scripts: https://tags.example.org/gtm.js (third party) and an inline script, both unapproved with an Approve… link; https://payments.example.net/v3/checkout.js (third party) and https://example.com/static/app.js (first party), both approved with their justification and a Withdraw approval link. Each has the start of its SHA-384 fingerprint and SRI none. At the bottom, Security headers last seen" loading="lazy"></div>
-          <figcaption>The demo's checkout page: two scripts approved with a reason, two waiting for approval.</figcaption>
-        </figure>
-        <figure>
-          <div class="frame"><img src="../media/security/script-inventory/history.png" alt="The Change history tab: 2026-10-20, Script changed: https://tags.example.org/gtm.js; 2026-10-08, Baseline: Inventory started with 4 script(s)" loading="lazy"></div>
-          <figcaption>Its change history: the tag manager script changed, so it lost its approval and the page is on alert.</figcaption>
-        </figure>
+          high-severity <em>Possible defacement</em> finding.</p>
+        <p>Nothing is kept until you press <strong>Save page</strong>; a new page then opens on the
+          right. Its first check happens at the next time in the schedule; press
+          <strong>Check now</strong> to run it at once.</p>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">
@@ -164,26 +192,26 @@
               Your browser can't play this video.
             </video>
           </div>
-          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. The page in the video is not saved.</figcaption>
+          <figcaption>About a minute and a quarter, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. The page in the video is not saved.</figcaption>
         </figure>
 
         <h2 id="how-to" data-toc="How to…">How to…</h2>
         <h3>…start watching your checkout page</h3>
         <ol class="steps">
           <li>Make sure the site is on the project's allowed list (<em>Scans &amp; findings → Authorization</em>, project admin).</li>
-          <li>Press <strong>Monitor a page</strong>, type a name and the page's address, and add the alert email addresses.</li>
+          <li>Choose the project in the sidebar, press <strong>Monitor a page</strong> at the top of the page, type a name and the page's address, and add the alert email addresses.</li>
           <li>Press <strong>Save page</strong>, then <strong>Check now</strong>. The first check records every script; that first list doesn't raise alerts.</li>
           <li>Approve each script on the <strong>Scripts</strong> tab (below).</li>
         </ol>
         <h3>…approve a script</h3>
         <ol class="steps">
-          <li>On the <strong>Scripts</strong> tab, find the <em>unapproved</em> script and press <strong>Approve…</strong>.</li>
+          <li>Pick the page in the list. On its <strong>Scripts</strong> tab, find the <em>unapproved</em> script and press <strong>Approve…</strong>.</li>
           <li>Write why the page needs it, for example "Card form from our payment provider". At least 10 characters.</li>
           <li>Press <strong>Approve script</strong>. The reason is shown under the script and recorded in the <em>Audit log</em>.</li>
         </ol>
         <h3>…deal with an alert</h3>
         <ol class="steps">
-          <li>Open the page and look at <strong>Change history</strong> to see what changed.</li>
+          <li>Pick the page in the list and open its <strong>Change history</strong> tab to see what changed.</li>
           <li>If a new or changed script is expected (a release, a supplier update), approve it again with a reason.</li>
           <li>If not, treat it as a security incident: remove the script from the page and find out how it got there.</li>
         </ol>
@@ -207,7 +235,7 @@
         </div>
 
         <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
-        <p class="footer-note">Describes the Script inventory page as of October 2026.</p>
+        <p class="footer-note">Describes the Script inventory page as of November 2026.</p>
       </div>
     </main>
 

@@ -24,34 +24,32 @@ A test checks one journey. Frontend quality looks across the site and answers **
 >
 > Turn every component in the design system's Storybook into a visual and accessibility check.
 
-**Where to find it:** in the sidebar, open **Tests → Frontend quality**. The page's own heading says **Frontend Quality**.
+**Where to find it:** in the sidebar, open **Tests → Frontend quality**.
 
 ## A tour of the screen
 
-The demo's web project has one saved crawl of example.com with two runs, a month of page measurements and a few selectors that broke, so every tab has something to show. The numbers match the sections below.
+The page always works on the project chosen at the top of the sidebar. It has four tabs; each one starts with a short explanation strip, then a list on the left and the selected item in a card on the right (the first item is already selected). The demo's web project has one saved crawl of example.com, a month of page measurements and a few selectors that broke, so every tab has something to show. The numbers match the sections below.
 
-![The Frontend Quality page with four numbered parts: 1 the Project picker, 2 the four tabs, 3 the crawler's description and New crawl button, 4 the crawl example.com link check (demo) with its latest run and its table of problems](../media/tests/frontend-quality/page-annotated.png)
+![The Frontend quality page with six numbered parts: 1 the four tabs, 2 the crawler's explanation and the New crawl button, 3 the Crawls list, 4 the crawl example.com link check (demo) with Run now and Delete, 5 the Run menu with the run's counts, 6 the problem filters and the table of problems](../media/tests/frontend-quality/page-annotated.png)
 
-*The Frontend Quality page for the demo's web project, on its first tab. Click the picture to see it larger.*
+*The Frontend quality page for the demo's web project, on its first tab. Click the picture to see it larger.*
 
-## 1. Project
+## 1. The four tabs
 
-Which project the page shows. It is the same choice as the project picker at the top of the sidebar: changing it here changes it there too.
-
-## 2. The four tabs
+Under the page title. To see another project, change the project at the top of the sidebar.
 
 | Tab | What it shows |
 |---|---|
-| **Link & asset crawler** | Visits your site page by page and checks every link, picture, script and style sheet. Shown first. |
-| **Page budgets** | Speed and size of pages, measured every time a test with a *check-page-budget* step runs, against the limits ("budgets") set in that step. |
-| **Selector health** | The page elements tests keep failing to find, or that TraceIQ keeps having to repair. |
-| **Storybook** | Makes one test per component story from your Storybook (a catalogue of a site's building blocks). |
+| **Link & asset crawler** | Visits your site page by page and checks every link, picture, script and style sheet. Shown first, and described in parts ② to ⑥. |
+| **Page budgets** | Speed and size of pages, measured every time a test with a *check-page-budget* step runs, against the limits ("budgets") set in that step. See [Page budgets](#budgets). |
+| **Selector health** | The page elements tests keep failing to find, or that TraceIQ keeps having to repair. See [Selector health](#selectors). |
+| **Storybook** | Makes one test per component story from your Storybook (a catalogue of a site's building blocks). See [Storybook](#storybook). |
 
-## 3. The crawler
+## 2. New crawl
 
-A **crawl** starts at one address, follows the links it finds to other pages of the same site, and checks everything each page uses. **New crawl** opens its settings:
+A **crawl** starts at one address, follows the links it finds to other pages of the same site, and checks everything each page uses. The strip says so, and **New crawl** opens its settings in a card above the list (the button is hidden while the card is open):
 
-![The New crawl form: Name, Start URL with the note Must be one of this project's hosts: example.com, localhost; Max depth 3, Max pages 100, Delay between requests to one host 250, Slow threshold 3000, Also crawl these project hosts, Schedule (cron, UTC, optional), the ticked boxes Respect robots.txt and Check links to other sites, and Save crawl and Cancel](../media/tests/frontend-quality/crawl-form.png)
+![The New crawl card: Name, Start URL with the note Must be one of this project's hosts: example.com, localhost; Max depth 3, Max pages 100, Delay between requests to one host 250, Slow threshold 3000, Also crawl these project hosts, Schedule (cron, UTC, optional), the ticked boxes Respect robots.txt and Check links to other sites, and Save crawl and Cancel](../media/tests/frontend-quality/crawl-form.png)
 
 | Setting | What it does |
 |---|---|
@@ -64,13 +62,27 @@ A **crawl** starts at one address, follows the links it finds to other pages of 
 | **Respect robots.txt** | Skip the pages the site asks robots not to visit. On by default. |
 | **Check links to other sites** | Also check that links to other websites still answer. Those sites are only asked for a status, never crawled. |
 
-## 4. Crawls and their problems
+**Save crawl** keeps it; **Cancel** closes the card.
 
-![The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #4, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked](../media/tests/frontend-quality/crawl.png)
+## 3. The list of crawls
+
+The project's saved crawls, each with its start address, its schedule if it has one, and how its last run went (*completed*, *running*, *error*, or *not run*). Click one to open it on the right.
+
+## 4. The crawl
+
+![The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #6, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked](../media/tests/frontend-quality/crawl.png)
 
 *The demo's crawl, on its latest run.*
 
-Each saved crawl is a box with its start address and limits, **Run now** and **Delete**. After a run, a **Run** menu picks one of its runs and the box shows how many pages were crawled and links checked, then a table of problems with what was wrong, the address, the kind of element, the status, the time it took, and the page it was found on. Tick the problem types or element kinds to filter, or search the addresses. The table shows 100 problems at a time.
+The card starts with the crawl's name, its start address, depth and page limit (and its schedule, or "ignores robots.txt", when set). **Run now** starts a run; **Delete** asks first, then deletes the crawl and its history.
+
+## 5. Run
+
+The **Run** menu picks one of the crawl's runs (the newest is shown first). For a finished run it says how many pages were crawled and links checked, and whether it stopped at a limit or skipped pages because of robots.txt. While a run is going it shows *running…* and the page checks again every 5 seconds. A crawl that has never run says "This crawl has not run yet."
+
+## 6. Problems
+
+A table of problems with what was wrong, the address, the kind of element, the status, the time it took, and the page it was found on. Tick the problem types (each shows its count) or element kinds to filter, or search the addresses. The table shows 100 problems at a time.
 
 | Problem | Meaning |
 |---|---|
@@ -83,26 +95,27 @@ Each saved crawl is a box with its start address and limits, **Run now** and **D
 
 ## Page budgets
 
-![The Page budgets tab: the page https://example.com/ on the left (60 samples, 8 over budget); on the right its latest run: LCP 1749 ms, CLS 0.044, INP no data, TTFB 141 ms, page weight 884 KB, 23 requests, each with small bars for recent runs; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description](../media/tests/frontend-quality/budgets.png)
+![The Page budgets tab: the Pages list with https://example.com/ (default, 31 samples, 6 over budget); on the right its card: LCP 1749 ms, CLS 0.044, INP no data, TTFB 141 ms, page weight 884 KB, 23 requests, each with small bars for recent runs; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description; Latest from run #800 (Homepage loads)](../media/tests/frontend-quality/budgets.png)
 
-In the demo, the test *Homepage loads* measures example.com's home page. Nothing appears here until a test contains a **check-page-budget** step. Then every run of that test measures the page, and this tab lists the pages measured in the last 30 days, those that went over budget first. Click a page to see, for its latest run and as small bars for recent runs:
+In the demo, the test *Homepage loads* measures example.com's home page. Nothing appears here until a test contains a **check-page-budget** step. Then every run of that test measures the page, and the **Pages** list shows the pages measured in the last 30 days, those that went over budget first, with their number of samples and how many were over budget. Click a page to see in its card, for its latest run and as small bars for up to 16 recent runs:
 
-- **LCP** (how long the main content takes to appear), **CLS** (how much the layout jumps while loading), **INP** (how quickly the page reacts to a click), **TTFB** (how long the server takes to start answering), **page weight** and **number of requests**. A red bar is a run that went over that budget.
+- **LCP** (how long the main content takes to appear), **CLS** (how much the layout jumps while loading), **INP** (how quickly the page reacts to a click), **TTFB** (how long the server takes to start answering), **page weight** and **request count**. A red bar is a run that went over that budget.
 - **Budgets**: each limit set in the step, and whether the page was within it or over.
 - **SEO checks**: basic search-engine checks such as a page title. They only fail the test if the step says so.
+- A link to the run the latest numbers come from.
 
 ## Selector health
 
-![The Selector health tab: a Window menu set to Last 90 days, the line 2 selectors, 1 heal, 7 failures, and two selectors: #todo-list li in Add a todo (6 failed, 1 heal proposal) with the sturdier locator [data-testid=todo-item] and a Copy button, and h1 in Homepage loads (1 failed) with role=heading[name=Example Domains]](../media/tests/frontend-quality/selectors.png)
+![The Selector health tab: a Window menu set to Last 90 days, the line 2 selectors, 1 heal, 7 failures, the list Selectors, worst first with #todo-list li (Add a todo, 6 failed, 1 heal proposal) and h1 (Homepage loads, 1 failed); on the right the card for #todo-list li: Failed 6, Heal proposals 1, Runtime-healed 0, heals and failures per week, the sturdier locator [data-testid=todo-item] with a Copy button, and recent runs](../media/tests/frontend-quality/selectors.png)
 
-A **selector** is the short code a test step uses to find an element on the page. When a page changes, selectors break. This tab lists the ones with the most trouble in the chosen window (30, 90, 180 or 365 days), worst first. For each one: the test and step it belongs to, how often it failed, how often TraceIQ proposed or made a repair, a bar per week, reasons it is fragile, and **sturdier locators** worked out from the page as it was when the step failed, with a **Copy** button. Suggestions are never applied for you: edit the test to use one.
+A **selector** is the short code a test step uses to find an element on the page. When a page changes, selectors break. The strip has a **Window** menu (30, 90, 180 or 365 days) and the totals for that window; the list shows the selectors with the most trouble, worst first. Click one to see in its card: the test (a link to edit it) and step it belongs to, how often it failed, how often TraceIQ proposed a repair or repaired it during a run, a bar per week, reasons it is fragile, **sturdier locators** worked out from the page as it was when the step failed, each with a **Copy** button, and links to recent runs. Suggestions are never applied for you: edit the test to use one.
 
 ## Storybook
 
 ![The Storybook tab: a description, a Storybook URL field and a Load stories button](../media/tests/frontend-quality/storybook.png)
 
-1. Enter the address of your Storybook (it must be on one of the project's sites) and press **Load stories**.
-2. Tick the stories you want, choose the suite to add the tests to, and whether each test checks the look (**Visual match**), **Accessibility**, or both.
+1. Enter the address of your Storybook (it must be on one of the project's sites) and press **Load stories**. A **Stories** card appears below.
+2. Tick the stories you want (**Filter stories** and **Select all shown** help), choose the suite under **Add cases to suite**, and whether each test checks the look (**Visual match**), **Accessibility**, or both.
 3. Press **Generate**. You get one test per story. Generating again for a story updates its existing test instead of making a second one, and keeps its saved reference picture.
 
 ## Watch it in use
@@ -117,7 +130,7 @@ A **selector** is the short code a test step uses to find an element on the page
 
 1. On the **Link & asset crawler** tab, press **New crawl**.
 2. Give it a name, enter the home page as the **Start URL**, and under **Schedule** type `0 3 * * *` (3 a.m. UTC every day).
-3. Press **Save crawl**, then **Run now** for a first result. The box shows "running…" until it is done.
+3. Press **Save crawl**, pick the crawl in the list, then press **Run now** in its card for a first result. The card shows "running…" until it is done.
 4. Tick **Broken (4xx/5xx)** to see only the links that need fixing, and the page each was found on.
 
 ### …keep a page fast
@@ -159,8 +172,9 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. Frontend quality checks how well your website itself is built, beyond single tests.
 2. It has four tabs. The first crawls your site and checks every link and file.
-3. New crawl sets one up: where to start, how deep to go, and how many pages.
-4. Only this project’s own sites can be crawled. Cancel closes the form.
-5. Page budgets tracks page speed and size, measured by a step in your tests.
-6. Selector health lists the page elements that tests keep failing to find.
-7. Storybook turns each story of a component library into a test.
+3. Saved crawls are listed on the left. The selected one shows its newest run and the problems it found.
+4. New crawl sets one up: where to start, how deep to go, and how many pages.
+5. Only this project’s own sites can be crawled. Cancel closes the form.
+6. Page budgets tracks page speed and size, measured by a step in your tests.
+7. Selector health lists the page elements that tests keep failing to find.
+8. Storybook turns each story of a component library into a test.

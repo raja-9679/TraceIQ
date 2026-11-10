@@ -122,8 +122,15 @@ test('Tests › Suites', async ({ page, browser }) => {
     await page.waitForURL(/\/cases\/\d+\/edit$/);
     await expect(page.getByText('Execution Timeline')).toBeVisible();
     await settle(page);
+    // The suite page's scroll position carries over, and the pointer would
+    // leave a hover highlight on the add-step bar.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.mouse.move(0, 0);
+    // Taller than the screen so the first steps show above the add-step bar.
+    await page.setViewportSize({ width: 1440, height: 1240 });
     await beat(page, 600);
     await page.screenshot({ path: out(`${DIR}/editor.png`) });
+    await page.setViewportSize({ width: 1440, height: 900 });
 
     // A "Run Another Test" step, filled in but never saved: the draft lives in
     // this browser only and is removed before leaving.
@@ -186,12 +193,17 @@ test('Tests › Suites', async ({ page, browser }) => {
         await d.getByRole('button', { name: 'Edit steps' }).click();
         await p.waitForURL(/\/cases\/\d+\/edit$/);
         await settle(p);
+        await p.evaluate(() => window.scrollTo(0, 0));
+        const timeline = p.locator('section[aria-labelledby="test-builder-steps"]');
+        const addBar = p.getByRole('toolbar', { name: 'Add a step' });
+        await caption(p, 'The top holds the name, priority and who looks after the test. Below them, the steps.');
+        await pointAt(p, p.getByLabel('Priority'), 1400);
         await caption(p, 'Each step is one action, such as opening a page, clicking or typing.');
-        await pointAt(p, p.getByText('Navigate', { exact: true }).first(), 1600);
+        await pointAt(p, timeline.getByText('Navigate', { exact: true }).first(), 1600);
         await caption(p, 'Next to the action: where on the page it happens, and what to type.');
         await pointAt(p, p.locator('input[value="#login-username"]'), 1600);
-        await caption(p, 'The dark bar at the bottom adds a step. Nothing is saved until you press Update Test.');
-        await pointAt(p, p.getByRole('button', { name: 'Assert' }), 1600);
+        await caption(p, 'The bar pinned to the bottom of the screen adds a step. Nothing is saved until you press Update Test.');
+        await pointAt(p, addBar.getByRole('button', { name: 'Assert' }), 1600);
         await pointAt(p, p.getByRole('button', { name: 'Update Test' }), 1600);
         await caption(p, '');
         await p.getByRole('button', { name: 'Back' }).click();

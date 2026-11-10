@@ -59,20 +59,27 @@
         <p><strong>Where to find it:</strong> in the sidebar, open <strong>Releases → Release readiness</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The controls are at the top, the answer below them, and the evidence underneath. The
-          numbers on the screenshot match the sections below.</p>
+        <p>The page always shows the project chosen in the sidebar's project picker. The white
+          header at the top holds the answer in short and the controls, the answer card comes
+          next, and the evidence is underneath. The numbers on the screenshot match the sections
+          below.</p>
         <figure>
-          <div class="frame"><img src="../media/releases/release-readiness/page-annotated.png" alt="The Release readiness page with seven numbered parts: 1 the project, commit and branch controls, 2 the verdict, 3 gate checks, 4 runs considered, 5 critical cases, 6 active quarantines, 7 requirements" loading="lazy" width="1440" height="1380"></div>
+          <div class="frame"><img src="../media/releases/release-readiness/page-annotated.png" alt="The Release readiness page with seven numbered parts: 1 the header with the answer label, Re-evaluate and the Commit and Branch controls, 2 the answer card, 3 gate checks, 4 runs considered, 5 critical cases, 6 active quarantines, 7 requirements" loading="lazy" width="1440" height="1380"></div>
           <figcaption>The Release readiness page for the demo's web project. Click the picture to see it larger.</figcaption>
         </figure>
 
-        <div class="part"><span class="num">1</span><h2 id="controls" data-toc="① Choosing what to judge">Choosing what to judge</h2></div>
+        <div class="part"><span class="num">1</span><h2 id="controls" data-toc="① The header: choosing what to judge">The header: choosing what to judge</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-readiness/controls.png" alt="A Project menu set to Demo — Todo web app, a Commit menu set to Latest run, a Branch field with the hint e.g. main, and the buttons Use branch and Re-evaluate" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/release-readiness/controls.png" alt="The header: the title Release readiness with a small Not ready label, a line about where the thresholds are set, a Re-evaluate button, and along the bottom a Commit menu set to Latest run, a Branch (latest commit on it) field with the hint e.g. main, and a Use branch button" loading="lazy"></div>
         </figure>
         <ul>
-          <li><strong>Project</strong> picks the project. This is the same choice as the project
-            picker at the top of the sidebar: changing it here changes it for the whole app.</li>
+          <li><strong>The label next to the title</strong> repeats the answer from ② (<em>Ready to
+            release</em>, <em>Not ready</em> or <em>Insufficient data</em>), so it stays in view
+            while you scroll through the evidence.</li>
+          <li><strong>Quality gate policy</strong>, the link in the line under the title, opens
+            the <em>Quality gate</em> page, where the rules are set.</li>
+          <li><strong>Re-evaluate</strong> (top right) works the answer out again, for example
+            after a new run.</li>
           <li><strong>Commit</strong> picks the version to judge. <em>Latest run</em> (the
             starting point) takes the commit of the newest finished run in the project. The menu
             also lists the 20 most recent commits that have a finished run, each with its branch
@@ -80,34 +87,41 @@
           <li><strong>Branch (latest commit on it)</strong>: type a branch name, such as
             <code>main</code>, and press <strong>Use branch</strong> to judge the commit of the
             newest finished run on that branch.</li>
-          <li><strong>Re-evaluate</strong> works the answer out again, for example after a new run.</li>
         </ul>
+        <p>There is no project menu on this page: to judge another project, choose it in the
+          sidebar. Switching project there puts the Commit menu back to <em>Latest run</em>.
+          Until a project is chosen, the page says "Pick a project".</p>
         <figure>
           <div class="frame small"><img src="../media/releases/release-readiness/commit-menu.png" alt="The Commit menu open: Latest run, then commits such as ac0d0bb · main · 1 run(s), 27a005e · feature/todo-routes · 2 run(s) and 00237be · main · 3 run(s)" loading="lazy"></div>
         </figure>
 
         <div class="part"><span class="num">2</span><h2 id="verdict" data-toc="② The answer">The answer</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-readiness/verdict-latest.png" alt="A green box: Ready to release, commit ac0d0bb, 1 run(s) evaluated, chosen from the latest run; Every gate check passed on the evidence below; all 7 checks passed over 1 run(s)" loading="lazy"></div>
-          <figcaption>The demo's newest commit, its release candidate: its run passed, its build system sent a test report, and both critical tests passed on it.</figcaption>
+          <div class="frame"><img src="../media/releases/release-readiness/verdict-latest.png" alt="The answer card: a red cross, Not ready, commit ac0d0bb, 1 run(s) evaluated, chosen from the latest run; At least one gate check failed; Reasons: Evidence age: oldest 15.0d (Homepage loads) (needs &lt;= 7d (critical cases)) — stale: Homepage loads 15d, Sign in as alice 15d" loading="lazy"></div>
+          <figcaption>The demo's newest commit. Its run passed and both critical tests passed on it, but those passes are 15 days old, and the demo's rules accept evidence up to 7 days old.</figcaption>
         </figure>
-        <p>The coloured box gives the answer, the commit it is about, how many runs were judged,
-          and the reasons as a list. The demo project's rules are stricter than the defaults (at
-          most one flaky test, a build-system report on the commit, every critical test passed on
-          it, evidence at most 7 days old), and its newest commit meets all of them.</p>
+        <p>The white card under the header gives the answer in large type, with a coloured icon
+          (green tick, red cross or amber question mark). Under it: the commit it is about, its
+          branch, how many runs were judged, one sentence on what the answer means, and a
+          <strong>Reasons</strong> box. For <em>Not ready</em> and <em>Insufficient data</em> it
+          lists every check that failed or lacked evidence; for <em>Ready to release</em> it says
+          how many checks passed over how many runs. The
+          demo project's rules are stricter than the defaults (at most one flaky test, a
+          build-system report on the commit, every critical test passed on it, evidence at most
+          7 days old).</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:26%">Answer</th><th>What it means</th></tr></thead>
             <tbody>
               <tr><td><span class="pill t-mint">Ready to release</span></td><td>Every quality-gate check passed on the runs of this commit.</td></tr>
-              <tr><td><span class="pill t-peach">Not ready</span></td><td>At least one check failed. The reasons say which one, what it found and what it needed, for example <em>Pass rate: 0.0% (needs &gt;= 90.0%)</em>.</td></tr>
+              <tr><td><span class="pill t-peach">Not ready</span></td><td>At least one check failed. The reasons say which one, what it found and what it needed, for example <em>Pass rate: 66.67% (needs &gt;= 90.0%)</em>.</td></tr>
               <tr><td><span class="pill t-butter">Insufficient data</span></td><td>Nothing failed, but evidence is missing: there is no finished run, or a required check has nothing to judge (a critical test that didn't run on this commit, no sign-off yet, no report from your build system). Missing evidence never counts as a pass.</td></tr>
             </tbody>
           </table>
         </div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-readiness/verdict-not-ready.png" alt="A pink box: Not ready, commit 00237be, 3 run(s) evaluated; At least one gate check failed; Pass rate: 66.67% (needs &gt;= 90.0%)" loading="lazy"></div>
-          <figcaption>An older demo commit: one of its three runs failed, so its pass rate is below the 90% the gate asks for.</figcaption>
+          <div class="frame"><img src="../media/releases/release-readiness/verdict-not-ready.png" alt="The answer card for commit 27a005e, 2 run(s) evaluated: Not ready, with three reasons: External CI tests: no report — no external CI report ingested for commit 27a005e; Critical tests passed: 1 of 2 passed — no result for commit 27a005e: Homepage loads; Evidence age: oldest 15.0d" loading="lazy"></div>
+          <figcaption>An older demo commit, chosen in the Commit menu: no report from the build system, and one critical test never ran on it. A missing result here reads as a reason, never as a pass.</figcaption>
         </figure>
         <p>When the commit was chosen for you (from <em>Latest run</em> or a branch), the line
           under the answer ends with "chosen from the latest run" or "chosen from the latest run on
@@ -116,14 +130,15 @@
 
         <div class="part"><span class="num">3</span><h2 id="checks" data-toc="③ Gate checks">Gate checks</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/release-readiness/checks.png" alt="Gate checks on the newest commit, each with a green tick: Pass rate 100.0% needs &gt;= 90.0%, Coverage full suite (informational), High-severity security findings 0 needs &lt;= 0, External CI tests 0 failed of 5 needs 0 failures (junit report 5, web unit tests), Flaky tests 1 flaky needs &lt;= 1 (Add a todo), Critical tests passed 2 of 2, Evidence age oldest 0.0d needs &lt;= 7d" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/release-readiness/checks.png" alt="Gate checks on the newest commit: green ticks for Pass rate 100.0% needs &gt;= 90.0%, Coverage full suite (informational), High-severity security findings 0 needs &lt;= 0, External CI tests 0 failed of 5 needs 0 failures, Flaky tests 1 flaky needs &lt;= 1 (Add a todo), Critical tests passed 2 of 2; a red cross for Evidence age oldest 15.0d needs &lt;= 7d" loading="lazy"></div>
         </figure>
         <p>The checks of the project's <strong>quality gate</strong>, applied to every run in
           ④. Each line shows the value found, then "needs" and the rule. A green tick means
           passed, a red cross failed, and an amber dash failed <em>because evidence was
           missing</em>. A grey line under a check gives detail, such as the names of the tests
-          concerned. On the demo's newest commit all seven pass; <em>Flaky tests</em> finds one
-          (<em>Add a todo</em>, quarantined), which is exactly the one the rules allow. The checks appear under the same names as on the <em>Quality gate</em> page
+          concerned. On the demo's newest commit six pass and <em>Evidence age</em> fails;
+          <em>Flaky tests</em> finds one (<em>Add a todo</em>, which is quarantined, see ⑥),
+          which is exactly the one the rules allow. The checks appear under the same names as on the <em>Quality gate</em> page
           (<em>Pass rate</em>, <em>Critical tests passed</em>…), which explains each one; point at a
           name to read a one-line explanation.</p>
         <p>Which checks there are depends on the project's rules, which are set on the
@@ -143,16 +158,17 @@
 
         <div class="part"><span class="num">4</span><h2 id="runs" data-toc="④ Runs considered">Runs considered</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/release-readiness/runs.png" alt="Runs considered: Every finished run on ac0d0bb. One row, #532 Web smoke (demo) · chromium, 5/5, a date and time, PASSED" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/release-readiness/runs.png" alt="Runs considered: Every finished run on ac0d0bb. One row: #800 Web smoke (demo), under it chromium and a date and time, on the right 5/5 and Passed" loading="lazy"></div>
         </figure>
-        <p>Every finished run on the commit (passed, failed or error), newest first: the run
-          number, the suite, the browser, and "targeted" or "case" when only part of the suite ran.
-          On the right: tests passed out of tests run, when it started, and its result. Click a
-          run to open it.</p>
+        <p>Every finished run on the commit (passed, failed or error), newest first. Each row shows
+          the run number and suite, and under them the browser, "targeted" or "case" when only
+          part of the suite ran, and when it started. On the right: tests passed out of tests run,
+          and its result. Click a row to open the run. With no finished run, the card says
+          "No finished run for this commit".</p>
 
         <div class="part"><span class="num">5</span><h2 id="critical" data-toc="⑤ Critical cases">Critical cases</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-readiness/critical.png" alt="Critical cases table with two tests, Homepage loads and Sign in as alice, both PASSED on this commit and as last result, on commit ac0d0bb, with dates and last passed time" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/release-readiness/critical.png" alt="Critical cases table with two tests, Homepage loads and Sign in as alice, both Passed on this commit and as last result, on commit ac0d0bb, with dates and last passed time" loading="lazy"></div>
         </figure>
         <p>A <em>case</em> is one test. The tests whose priority is set to <strong>critical</strong>
           are the ones a release depends on, and each gets a row:</p>
@@ -181,19 +197,20 @@
 
         <div class="part"><span class="num">6</span><h2 id="quarantines" data-toc="⑥ Active quarantines">Active quarantines</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/release-readiness/quarantines.png" alt="Active quarantines: Add a todo, score 0.41, manual; Owner Alex Morgan, an expiry date; Times out waiting for the list to refresh; tracked in DEMO-102. Below it a link Manage flaky tests" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/release-readiness/quarantines.png" alt="Active quarantines: Add a todo, score 0.41 · manual; Owner: Alex Morgan · expires 11/24/2026; Times out waiting for the list to refresh; tracked in DEMO-102. At the bottom a link Manage flaky tests" loading="lazy"></div>
         </figure>
         <p>Tests that are <em>quarantined</em> right now: flaky tests that TraceIQ leaves out of
           runs for a while. Because they didn't run, they are no evidence for this release. Each
           one shows its flake score, whether it was quarantined automatically or by a person, its
           owner, when the quarantine ends, and the reason given. <strong>Manage flaky tests</strong>
-          opens the <em>Flaky tests</em> page. In the demo, <em>Add a todo</em> was quarantined
-          by hand, with an owner and a reason. When nothing is quarantined, the box says
-          "No active quarantines".</p>
+          opens the <em>Flaky tests</em> page. In the picture, <em>Add a todo</em> has a flake
+          score of 0.41 and was quarantined by a person (<em>manual</em>; <em>auto</em> means
+          TraceIQ did it), with Alex Morgan as owner, an end date and the reason. When nothing is
+          quarantined, the card says "No active quarantines".</p>
 
         <div class="part"><span class="num">7</span><h2 id="requirements" data-toc="⑦ Requirements">Requirements</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/release-readiness/requirements.png" alt="Requirements: DEMO-103, DEMO-104 and PRD-Security-3, each UNTESTED with their tests showing no result; DEMO-101 A user can sign in, PASSING (Sign in as alice: passed); DEMO-102 A user can add a todo, PASSING (Add a todo: passed); and a link Manage requirement links" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/release-readiness/requirements.png" alt="Requirements: DEMO-103 A user can reset a forgotten password and DEMO-104 Paying for Pro works end to end, both Untested with their tests showing no result; DEMO-101 A user can sign in, DEMO-102 A user can add a todo and PRD-Security-3 Session cookies are HttpOnly and SameSite, each Passing with their test passed; and a link Manage requirement links" loading="lazy"></div>
         </figure>
         <p>Requirements (such as a ticket <code>DEMO-101</code>) that have tests linked to them,
           judged on the same commit as the critical tests. Under each one: its linked tests and
@@ -250,6 +267,7 @@
           <li><strong>Runs without a verdict don't count.</strong> Runs that are still going, cancelled or timed out are left out, and so are the check runs TraceIQ makes to test a suggested fix (see <em>Proposals</em>).</li>
           <li><strong>The rules live on the Quality gate page.</strong> Nothing can be changed here; the page only reads.</li>
           <li><strong>It doesn't update by itself.</strong> Press <strong>Re-evaluate</strong>, or come back to the browser tab.</li>
+          <li><strong>It follows the sidebar's project.</strong> Changing project there changes this page too, and starts again from <em>Latest run</em>.</li>
           <li><strong>Times are shown in your own time zone</strong>, as set on your computer.</li>
           <li><strong>The same answer is available to tools.</strong> Build systems and AI assistants can ask for it with an API key; a key limited to one project can only ask about that project.</li>
         </ul>
@@ -263,7 +281,7 @@
         </div>
 
         <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
-        <p class="footer-note">Describes the Release readiness page as of October 2026.</p>
+        <p class="footer-note">Describes the Release readiness page as of November 2026.</p>
       </div>
     </main>
 

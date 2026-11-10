@@ -3,15 +3,15 @@ import { annotate, beat, caption, out, pointAt, record, settle } from '../captur
 
 // Guide page: frontend/public/docs/releases/release-readiness.html
 // Nothing here changes data: choosing a commit only changes what the page
-// reads. The Project menu is never used (it would switch the app's active
-// project), and Re-evaluate / Use branch are pointed at, never pressed.
+// reads. The page follows the sidebar's project (the demo's web project), and
+// Re-evaluate / Use branch are pointed at, never pressed.
 
 const DIR = 'releases/release-readiness';
 
 const open = async (p: Page) => {
     await p.goto('/release-readiness');
     await expect(p.getByRole('heading', { name: 'Release readiness', level: 1 })).toBeVisible();
-    await expect(p.getByRole('status').filter({ hasText: /Ready to release|Not ready|Insufficient data/ })).toBeVisible();
+    await expect(p.locator('main').getByRole('status', { name: 'Verdict' })).toBeVisible();
     await settle(p);
 };
 const section = (p: Page, title: string) =>
@@ -20,13 +20,14 @@ const section = (p: Page, title: string) =>
 test('Releases › Release readiness', async ({ page, browser }) => {
     await open(page);
     const main = page.locator('main');
-    const verdict = main.getByRole('status').filter({ hasText: /Ready to release|Not ready|Insufficient data/ });
+    const verdict = main.getByRole('status', { name: 'Verdict' });
 
     // 1. The whole page as a reader first meets it.
     await page.screenshot({ path: out(`${DIR}/page.png`) });
 
     // 2. Its parts, numbered (the guide explains each number).
-    const controls = main.locator('#rr-commit').locator('xpath=ancestor::div[contains(@class,"shrink-0")][1]');
+    // The header panel: title, verdict pill, Re-evaluate, and the Commit/Branch strip.
+    const controls = main.getByRole('heading', { name: 'Release readiness', level: 1 }).locator('xpath=ancestor::div[contains(@class,"rounded-3xl")][1]');
     await page.setViewportSize({ width: 1440, height: 1380 });
     await settle(page);
     const clean = await annotate(page, [
@@ -44,11 +45,17 @@ test('Releases › Release readiness', async ({ page, browser }) => {
     // 3. Close-ups used next to each explanation.
     await controls.screenshot({ path: out(`${DIR}/controls.png`) });
     await verdict.screenshot({ path: out(`${DIR}/verdict-latest.png`) });
+    await section(page, 'Critical cases').screenshot({ path: out(`${DIR}/critical.png`) });
+    // The paired cards stretch to their neighbour's height side by side; below
+    // the lg breakpoint they stack, so each close-up is only its own content.
+    await page.setViewportSize({ width: 1000, height: 1380 });
+    await settle(page);
     await section(page, 'Gate checks').screenshot({ path: out(`${DIR}/checks.png`) });
     await section(page, 'Runs considered').screenshot({ path: out(`${DIR}/runs.png`) });
-    await section(page, 'Critical cases').screenshot({ path: out(`${DIR}/critical.png`) });
     await section(page, 'Active quarantines').screenshot({ path: out(`${DIR}/quarantines.png`) });
     await section(page, 'Requirements').screenshot({ path: out(`${DIR}/requirements.png`) });
+    await page.setViewportSize({ width: 1440, height: 1380 });
+    await settle(page);
 
     // The commit menu, open (closed again with Escape).
     await main.locator('#rr-commit').click();
@@ -58,12 +65,12 @@ test('Releases › Release readiness', async ({ page, browser }) => {
     const options = await listbox.getByRole('option').allInnerTexts();
     await page.keyboard.press('Escape');
 
-    // The newest commit is the demo's ready release candidate (verdict-latest).
-    // Find an older commit marked "Not ready", preferring one where a critical
-    // case failed, to show that state too.
+    // verdict-latest shows the newest commit. Find an OLDER commit marked
+    // "Not ready" (options[0] is "Latest run", options[1] the newest commit),
+    // preferring one where a critical case failed, to show a second reason.
     let notReady: string | null = null;
     let criticalFailed = false;
-    for (const label of options.slice(1)) {
+    for (const label of options.slice(2)) {
         if (criticalFailed) break;
         await main.locator('#rr-commit').click();
         await page.getByRole('option', { name: label, exact: true }).click();
@@ -88,11 +95,13 @@ test('Releases › Release readiness', async ({ page, browser }) => {
     await record(browser, `${DIR}/walkthrough.webm`, async (p) => {
         await open(p);
         const m = p.locator('main');
-        const v = m.getByRole('status').filter({ hasText: /Ready to release|Not ready|Insufficient data/ });
+        const v = m.getByRole('status', { name: 'Verdict' });
         await caption(p, 'Release readiness gives one answer for one version of your app: ready, or not.');
-        await pointAt(p, v.locator('div.text-2xl'), 2200);
+        await pointAt(p, v.getByRole('heading', { level: 2 }), 2200);
         await caption(p, 'Under the answer: the commit it judged, how many runs, and the reasons.');
         await pointAt(p, v.locator('.font-mono').first(), 2400);
+        await caption(p, 'The answer is repeated next to the page title, so it stays in view.');
+        await pointAt(p, m.getByRole('heading', { name: 'Release readiness', level: 1 }).locator('xpath=following-sibling::span[1]'), 2000);
         await caption(p, 'Pick another commit here to judge that version instead.');
         await pointAt(p, m.locator('#rr-commit'), 900);
         await m.locator('#rr-commit').click();

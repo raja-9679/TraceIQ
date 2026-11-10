@@ -63,41 +63,22 @@
         <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Estate</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The page opens on the list of the project's estates; the demo's web project has one:</p>
+        <p>The page always works on the project chosen at the top of the sidebar. On the left is
+          the list of that project's estates; on the right, the selected estate. When you arrive,
+          the first estate in the list is already open. The demo's web project has one:</p>
         <figure>
-          <div class="frame"><img src="../media/security/estate/page.png" alt="The Estate page with New estate and Certificate calendar buttons, one estate in the list (example.com estate (demo), worst score 87, 2 domains, average 94), the line Choose an estate, or create a new one, and a Project menu" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/security/estate/page.png" alt="The Estate page: a New estate button and the tabs Estates and Certificate calendar in the header, an Estates list with one estate (example.com estate (demo), 2 domains, average 94, worst score 87), and on the right that estate's card with Scan now, Settings and Delete estate, its two domains, and below it the line Choose a domain" loading="lazy" width="1440" height="900"></div>
         </figure>
-        <p>The picture below shows the form behind <strong>New estate</strong>. The numbers match
-          the sections below.</p>
+        <p>The picture below shows the same page with the domain <em>example.com</em> opened. The
+          numbers match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/security/estate/page-annotated.png" alt="The Estate page with four numbered parts: 1 the New estate button, 2 the Certificate calendar button, 3 the Project menu, 4 the New estate form" loading="lazy" width="1440" height="900"></div>
-          <figcaption>Starting a new estate in the demo's web project (not saved). Click the picture to see it larger.</figcaption>
-        </figure>
-
-        <div class="part"><span class="num">1</span><h2 id="estates" data-toc="① Estates">Estates</h2></div>
-        <p>An <strong>estate</strong> is a named group of domains, for example "Public websites"
-          or "Payment domains". The list on the left shows each one with its
-          <strong>worst domain score</strong> (the coloured number), how many domains it has and
-          their average score. Click one to open it; <strong>New estate</strong> starts one.</p>
-
-        <div class="part"><span class="num">2</span><h2 id="certificates" data-toc="② Certificate calendar">Certificate calendar</h2></div>
-        <p>A <strong>certificate</strong> is what lets a browser show the padlock for a site; it
-          has an end date, and when it passes, visitors get a warning page instead of your site.
-          The calendar lists every certificate seen on every domain, in every estate of the
-          workspace that you can see, the soonest to expire first: the date, the days left, the
-          host, the estate and the project. Seven days or fewer show in red, 30 or fewer in
-          amber. Until a scan has run, it says "No certificates observed yet — scan an estate
-          first."</p>
-        <figure>
-          <div class="frame"><img src="../media/security/estate/certificates.png" alt="The certificate calendar with columns Expires, Days left, Host, Estate and Project: example.com and www.example.com, both expiring 2027-01-13, 82 days left, in example.com estate (demo), project Demo — Todo web app" loading="lazy"></div>
-          <figcaption>The demo's two certificates.</figcaption>
+          <div class="frame"><img src="../media/security/estate/page-annotated.png" alt="The Estate page with eight numbered parts: 1 the New estate button, 2 the Estates and Certificate calendar tabs, 3 the Estates list, 4 the estate's name, last scan and buttons, 5 the domain table, 6 the Add domains box, 7 the checks for one domain, 8 the scan history" loading="lazy" width="1440" height="2300"></div>
+          <figcaption>The demo estate with <em>example.com</em> opened. Click the picture to see it larger.</figcaption>
         </figure>
 
-        <div class="part"><span class="num">3</span><h2 id="project" data-toc="③ Project">Project</h2></div>
-        <p>Estates belong to a project. This menu is the same choice as the project picker at
-          the top of the sidebar: changing it here changes it for the whole app.</p>
-
-        <div class="part"><span class="num">4</span><h2 id="form" data-toc="④ The estate's settings">The estate's settings</h2></div>
+        <div class="part"><span class="num">1</span><h2 id="new" data-toc="① New estate">New estate</h2></div>
+        <p><strong>New estate</strong>, at the top right of the page, opens an empty estate form
+          on the right. It is there only when a project is chosen in the sidebar.</p>
         <figure>
           <div class="frame"><img src="../media/security/estate/new-estate.png" alt="The New estate form: Name (Public websites), Scan schedule (cron, UTC, at most hourly) 0 3 * * *, Certificate alerts (days before expiry) 30, 14, 7, Extra DKIM selectors, Alert emails, Scheduled scans ticked, Discover subdomains from certificate transparency ticked, and Save estate" loading="lazy"></div>
         </figure>
@@ -115,23 +96,77 @@
             </tbody>
           </table>
         </div>
-        <p>Nothing is saved until you press <strong>Save estate</strong>.</p>
+        <p>Nothing is saved until you press <strong>Save estate</strong>; the new estate then
+          opens.</p>
 
-        <h3 id="inside">Inside an estate</h3>
-        <p>Once saved, the estate's page has <strong>Scan now</strong>, <strong>Settings</strong>
-          and <strong>Delete estate</strong> (which asks first and also deletes the scan history),
-          and three parts:</p>
+        <div class="part"><span class="num">2</span><h2 id="tabs" data-toc="② Estates and Certificate calendar">Estates and Certificate calendar</h2></div>
+        <p>Two tabs under the page title. <strong>Estates</strong> (with how many there are) is
+          the list and the selected estate. <strong>Certificate calendar</strong> replaces them
+          with one table of certificates.</p>
+        <p>A <strong>certificate</strong> is what lets a browser show the padlock for a site; it
+          has an end date, and when it passes, visitors get a warning page instead of your site.
+          The calendar lists every certificate seen on every domain, in every estate of the
+          workspace that you can see (not only this project's), the soonest to expire first: the
+          date, the days left, the host, the estate and the project. Seven days or fewer show in
+          red, 30 or fewer in amber. Until a scan has run, it says "No certificates observed yet
+          — scan an estate first."</p>
         <figure>
-          <div class="frame"><img src="../media/security/estate/estate.png" alt="The demo estate, example.com estate (demo), last scan completed 2026-10-21, with Scan now, Settings and Delete estate buttons and the line Passive checks only. The domain table: example.com, zone apex, score 87, 82 days left on its certificate; www.example.com, score 100, 82 days. Below it the Add domains box and Import domains. On the right the checks for example.com, 87 out of 100: how the score is made (100 start, minus 3 SPF softfail, 6 DMARC p=none, 2 no CAA record, 2 no DNSSEC, equals 87) and every check with Pass or Warn. At the bottom the scan history: two scheduled scans, averages 94 and 91" loading="lazy"></div>
-          <figcaption>The demo estate with <em>example.com</em> opened: its score lost 13 points to four email and DNS warnings.</figcaption>
+          <div class="frame"><img src="../media/security/estate/certificates.png" alt="The Certificate calendar card with columns Expires, Days left, Host, Estate and Project: example.com and www.example.com, both expiring 2027-01-17, 67 days left, in example.com estate (demo), project Demo — Todo web app" loading="lazy"></div>
+          <figcaption>The demo's two certificates.</figcaption>
         </figure>
+
+        <div class="part"><span class="num">3</span><h2 id="estates" data-toc="③ The list of estates">The list of estates</h2></div>
+        <p>An <strong>estate</strong> is a named group of domains, for example "Public websites"
+          or "Payment domains". The <strong>Estates</strong> list shows each one with how many
+          domains it has, their average score, and on the right its <strong>worst domain
+          score</strong> (the coloured number: 90 or more green, 75–89 amber, below 75 red).
+          Click one to open it on the right. To see another project's estates, change the project
+          at the top of the sidebar.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="estate" data-toc="④ The estate and its buttons">The estate and its buttons</h2></div>
+        <p>The estate's card starts with its name and how its last scan ended, then three
+          buttons:</p>
         <ul>
-          <li><strong>The domain table</strong>, lowest score first: the domain (with "from CT logs" if it was discovered, "zone apex" for a main domain), its score, a small trend line of up to 12 recent scores from the last 120 days, and the days left on its certificate. <em>Remove</em> takes a domain out of the estate, after asking (its past scan results are deleted too).</li>
-          <li><strong>Add domains</strong>: paste domains, one per line, comma-separated or the first column of a CSV, then press <strong>Import domains</strong>. Each one must be on the project's allowed list; refused ones are listed with the reason. An estate holds up to 500 domains.</li>
-          <li><strong>A domain's checks</strong>: click a domain to see every check, with what it found, why it matters, and the arithmetic of its score.</li>
+          <li><strong>Scan now</strong> checks every domain straight away. While a scan runs the
+            button says <em>Scanning…</em> and the page refreshes by itself until it has
+            finished.</li>
+          <li><strong>Settings</strong> opens the same fields as the New estate form inside the
+            card (the button then says <em>Close settings</em>); <strong>Save estate</strong>
+            keeps the changes, <strong>Cancel</strong> drops them.</li>
+          <li><strong>Delete estate</strong> asks first, and also deletes its scan history.</li>
         </ul>
-        <p><strong>Scan history</strong> at the bottom lists every scan: when, whether it was
-          scheduled or manual, how it ended, the average score and the number of domains.</p>
+        <p>Below them, a reminder that the checks are passive only.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="domains" data-toc="⑤ The domains">The domains</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/estate/estate.png" alt="The demo estate card: example.com estate (demo), last scan completed, Scan now, Settings and Delete estate, Passive checks only. Domains, lowest score first: example.com, added, zone apex, score 87, 67 days left on its certificate; www.example.com, added, score 100, 67 days. Below, the Add domains box with Import domains" loading="lazy"></div>
+        </figure>
+        <p><strong>Domains, lowest score first</strong>: the domain (with "from CT logs" if it was
+          discovered, "zone apex" for a main domain), its score, a small trend line of up to 12
+          recent scores from the last 120 days, and the days left on its certificate. Click a
+          domain's name to see its checks (part ⑦). <em>Remove</em> takes a domain out of the
+          estate, after asking (its past scan results are deleted too).</p>
+
+        <div class="part"><span class="num">6</span><h2 id="import" data-toc="⑥ Add domains">Add domains</h2></div>
+        <p>Paste domains, one per line, comma-separated or the first column of a CSV, then press
+          <strong>Import domains</strong>. Each one must be on the project's allowed list; it
+          says how many were added, and refused ones are listed with the reason (and stay in the
+          box). An estate holds up to 500 domains.</p>
+
+        <div class="part"><span class="num">7</span><h2 id="domain" data-toc="⑦ A domain's checks">A domain's checks</h2></div>
+        <p>Below the estate, a second card shows the domain you clicked: its score out of 100, a
+          trend line, <strong>How the score is made</strong> (the arithmetic, line by line) and
+          every <strong>check</strong> with Pass, Warn or Fail, what it found, why it matters, and
+          the points it cost. Until you click a domain, this space says "Choose a domain".</p>
+        <figure>
+          <div class="frame"><img src="../media/security/estate/domain.png" alt="The checks for example.com, 87 out of 100: how the score is made (100 start, minus 3 SPF softfail, 6 DMARC p=none, 2 no CAA record, 2 no DNSSEC, equals 87) and every check with Pass or Warn: SPF, DMARC, DMARC reporting, MX, DKIM, CAA, DNSSEC, Subdomain takeover, Certificate, HSTS and HTTP to HTTPS" loading="lazy"></div>
+          <figcaption><em>example.com</em> lost 13 points to four email and DNS warnings.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">8</span><h2 id="history" data-toc="⑧ Scan history">Scan history</h2></div>
+        <p>The last card lists every scan of the estate, newest first: how it ended, its number,
+          when, whether it was scheduled or manual, the average score and the number of domains.
+          The demo estate has two scheduled scans, with averages 94 and 91.</p>
 
         <h3 id="score">How the score is made</h3>
         <p>Every domain starts at 100. Each problem found takes off a fixed number of points, and
@@ -165,19 +200,19 @@
         <h3>…start watching your domains</h3>
         <ol class="steps">
           <li>Ask a project admin to allow security testing and list your domains under <em>Scans &amp; findings → Authorization</em>. Estate refuses domains that aren't on that list.</li>
-          <li>Press <strong>New estate</strong>, give it a name, add the alert email addresses and press <strong>Save estate</strong>.</li>
-          <li>Paste your domains into <strong>Add domains</strong> and press <strong>Import domains</strong>.</li>
+          <li>Choose the project in the sidebar, press <strong>New estate</strong> at the top of the page, give it a name, add the alert email addresses and press <strong>Save estate</strong>.</li>
+          <li>In the new estate's card, paste your domains into <strong>Add domains</strong> and press <strong>Import domains</strong>.</li>
           <li>Press <strong>Scan now</strong>. The page refreshes by itself until the scan has finished.</li>
           <li>Click the lowest-scoring domain to see what to fix first.</li>
         </ol>
         <h3>…see which certificates expire soon</h3>
         <ol class="steps">
-          <li>Press <strong>Certificate calendar</strong>.</li>
+          <li>Open the <strong>Certificate calendar</strong> tab under the page title.</li>
           <li>The top rows expire first. Red numbers are a week or less away.</li>
         </ol>
         <h3>…fix a problem and confirm it</h3>
         <ol class="steps">
-          <li>Click the domain and read the check's explanation.</li>
+          <li>Pick the estate in the list, click the domain in its table and read the check's explanation.</li>
           <li>Fix the record or the certificate with whoever runs your DNS or hosting.</li>
           <li>Press <strong>Scan now</strong>. When the check passes, its finding is marked verified fixed in <em>Scans &amp; findings</em>.</li>
         </ol>
@@ -201,7 +236,7 @@
         </div>
 
         <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
-        <p class="footer-note">Describes the Estate page as of October 2026.</p>
+        <p class="footer-note">Describes the Estate page as of November 2026.</p>
       </div>
     </main>
 

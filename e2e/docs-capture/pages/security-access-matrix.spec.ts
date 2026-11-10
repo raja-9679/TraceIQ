@@ -2,26 +2,23 @@ import { expect, test, type Page } from '@playwright/test';
 import { annotate, beat, caption, out, pointAt, record, settle } from '../capture';
 
 // Guide page: frontend/public/docs/security/access-matrix.html
-// The demo's web project has one saved matrix ("Todo app roles (demo)") with
-// one finished run. Nothing here changes data: "Save changes", "Run matrix"
-// and "Delete matrix" are never pressed, and the page's own Project menu is
-// never touched (it switches the active project).
+// The demo's web project (the sidebar's active project) has one saved matrix
+// ("Todo app roles (demo)") with one finished run. Nothing here changes data:
+// "New matrix", "Save changes", "Run matrix" and "Delete matrix" are never
+// pressed, and the sidebar's project switcher is never touched.
 
 const DIR = 'security/access-matrix';
 const MATRIX = 'Todo app roles (demo)';
 
 async function open(p: Page) {
     await p.goto('/access-matrix');
-    await expect(p.getByRole('heading', { name: 'Access Matrix', level: 1 })).toBeVisible();
-    await settle(p);
-}
-
-async function openMatrix(p: Page) {
-    const list = p.locator('main').getByRole('navigation', { name: 'Access matrices' });
-    await list.getByText(MATRIX, { exact: true }).click();
+    await expect(p.getByRole('heading', { name: 'Access matrix', level: 1 })).toBeVisible();
+    // With nothing in the address, the first matrix opens by itself.
     await expect(p.locator('main').getByLabel('Name', { exact: true })).toHaveValue(MATRIX);
     await settle(p);
 }
+
+const card = (p: Page) => p.locator('main').getByRole('article', { name: `Access matrix ${MATRIX}` });
 
 test('Security › Access matrix', async ({ page, browser }) => {
     await open(page);
@@ -29,25 +26,30 @@ test('Security › Access matrix', async ({ page, browser }) => {
     const list = main.getByRole('navigation', { name: 'Access matrices' });
     await expect(list.getByText(MATRIX)).toBeVisible();
 
-    // 1. The page as a reader first meets it: the list, nothing opened yet.
+    // 1. The page as a reader first meets it: list + the first matrix open.
     await page.screenshot({ path: out(`${DIR}/page.png`) });
 
-    // 2. The demo matrix opened on Edit grid, numbered.
-    await openMatrix(page);
+    // 2. The whole page, numbered.
+    const detail = card(page);
+    const heading = detail.getByRole('heading', { name: MATRIX, level: 2 }).locator('xpath=..');
+    const tabs = detail.getByRole('tablist', { name: 'Matrix views' });
     const fields = main.getByLabel('Name', { exact: true }).locator('xpath=ancestor::div[contains(@class,"grid")][1]');
     const identities = main.locator('fieldset');
     const grid = main.locator('table').locator('xpath=..');
     const prereq = main.locator('section[aria-labelledby="am-prereq"]');
     const save = main.getByRole('button', { name: 'Save changes' });
-    await page.setViewportSize({ width: 1440, height: 1960 });
+    await page.setViewportSize({ width: 1440, height: 2100 });
     await settle(page);
     const clean = await annotate(page, [
-        { n: 1, target: list.getByRole('button', { name: 'New matrix' }) },
-        { n: 2, target: fields, side: 'right' },
-        { n: 3, target: identities, side: 'right' },
-        { n: 4, target: grid },
-        { n: 5, target: prereq },
-        { n: 6, target: save },
+        { n: 1, target: main.getByRole('button', { name: 'New matrix' }) },
+        { n: 2, target: list },
+        { n: 3, target: heading, side: 'right' },
+        { n: 4, target: tabs, side: 'right' },
+        { n: 5, target: fields, side: 'right' },
+        { n: 6, target: identities, side: 'right' },
+        { n: 7, target: grid },
+        { n: 8, target: prereq },
+        { n: 9, target: save },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
@@ -59,7 +61,7 @@ test('Security › Access matrix', async ({ page, browser }) => {
     await prereq.screenshot({ path: out(`${DIR}/prerequisites.png`) });
 
     // 4. Runs & results: the demo run, its findings, and one cell's evidence.
-    await main.getByRole('tab', { name: 'Runs & results' }).click();
+    await tabs.getByRole('tab', { name: 'Runs & results' }).click();
     const results = main.locator('section[aria-labelledby="am-results"]');
     await expect(results.getByText('Results — run #', { exact: false })).toBeVisible();
     await settle(page);
@@ -81,9 +83,8 @@ test('Security › Access matrix', async ({ page, browser }) => {
         await open(p);
         const m = p.locator('main');
         await caption(p, 'An access matrix checks that each kind of user can reach only what they should.', 2000);
-        await caption(p, 'The list on the left holds the project\'s matrices. Open one to see its grid.');
-        await pointAt(p, m.getByRole('navigation', { name: 'Access matrices' }).getByText(MATRIX), 1200);
-        await openMatrix(p);
+        await caption(p, 'The list on the left holds the matrices of the project chosen in the sidebar. The first one is already open on the right.');
+        await pointAt(p, m.getByRole('navigation', { name: 'Access matrices' }).getByText(MATRIX), 1600);
         await caption(p, 'The columns are identities: saved logins called personas, plus Anonymous, someone not logged in.');
         await pointAt(p, m.locator('fieldset'), 2200);
         const g = m.locator('table');
@@ -95,9 +96,12 @@ test('Security › Access matrix', async ({ page, browser }) => {
         await caption(p, 'Here only alice, the admin, should reach the admin panel.');
         await pointAt(p, g.locator('tbody tr').nth(1), 2200);
         await caption(p, '');
-        await m.getByRole('tab', { name: 'Runs & results' }).click();
+        const t = card(p).getByRole('tab', { name: 'Runs & results' });
+        await t.scrollIntoViewIfNeeded();
+        await pointAt(p, t, 900);
+        await t.click();
         await settle(p);
-        await caption(p, 'Runs and results shows what really happened, cell by cell.');
+        await caption(p, 'The Runs and results tab shows what really happened, cell by cell.');
         const r = m.locator('section[aria-labelledby="am-results"]');
         await pointAt(p, r.locator('table'), 2200);
         await caption(p, 'Red means access was granted that should have been denied. bob, a plain user, reached the admin panel.');
