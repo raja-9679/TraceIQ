@@ -50,6 +50,23 @@ describe('cleanRecordedSteps', () => {
         expect(secretsNeeded(out)).toEqual(['USER_PASSWORD']);
     });
 
+    it('leaves no "{{" however many brackets are stacked', () => {
+        const out = cleanRecordedSteps([
+            { type: 'fill', selector: '#a', value: '{{{secret.ADMIN_PASSWORD}}' },
+            { type: 'fill', selector: '#b', value: '{{{{secret.ADMIN_PASSWORD}}}}' },
+            { type: 'goto', value: '{{{{{env.X}}' },
+            { type: 'click', selector: '[title="{{{secret.X}}"]' },
+        ]);
+        expect(out.map((s) => s.value)).toEqual([
+            '{ { {secret.ADMIN_PASSWORD}}', '{ { { {secret.ADMIN_PASSWORD}}}}', '{ { { { {env.X}}', '',
+        ]);
+        for (const s of out) {
+            expect(s.value).not.toContain('{{');
+            expect(s.selector).not.toContain('{{');
+        }
+        expect(secretsNeeded(out)).toEqual([]);
+    });
+
     it('returns nothing for a non-list', () => {
         expect(cleanRecordedSteps({ type: 'click' })).toEqual([]);
         expect(cleanRecordedSteps(undefined)).toEqual([]);

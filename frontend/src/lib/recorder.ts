@@ -35,7 +35,8 @@ const text = (v: unknown, max: number): string | undefined =>
 // whole value of a fill step. The extension applies the same rule; this is
 // the second check.
 const SECRET_PLACEHOLDER = /^\{\{secret\.[A-Z][A-Z0-9_]{0,39}\}\}$/;
-const literal = (v: string | undefined): string | undefined => v?.replace(/\{\{/g, '{ {');
+// Every "{" followed by another gets a space, so no "{{" survives ("{{{" too).
+const literal = (v: string | undefined): string | undefined => v?.replace(/\{(?=\{)/g, '{ ');
 
 /** Rebuilds recorded steps field by field, with fresh ids. */
 export function cleanRecordedSteps(raw: unknown): RecordedStep[] {

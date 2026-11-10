@@ -102,7 +102,9 @@ function weaveFrameSwitches(steps) {
 // placeholder for a password field (`secret: true`, set by the content script,
 // which the page cannot reach).
 const SECRET_PLACEHOLDER = /^\{\{secret\.[A-Z][A-Z0-9_]{0,39}\}\}$/;
-const literal = (v) => (typeof v === 'string' ? v.replace(/\{\{/g, '{ {') : v);
+// Every "{" that is followed by another gets a space, so no "{{" survives
+// ("{{{" must not turn into "{ {{").
+const literal = (v) => (typeof v === 'string' ? v.replace(/\{(?=\{)/g, '{ ') : v);
 
 function safeStep(step) {
     const ownSecret = step.type === 'fill' && step.secret === true && SECRET_PLACEHOLDER.test(step.value || '');

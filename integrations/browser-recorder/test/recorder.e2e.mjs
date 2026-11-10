@@ -158,7 +158,7 @@ try {
     await shop.locator('#show').click();
     await shop.locator('[name=pin]').pressSequentially('4321-pin');
     await shop.locator('[name=note]').fill('');
-    await shop.locator('[name=note]').pressSequentially('{{secret.ADMIN_PASSWORD}}');
+    await shop.locator('[name=note]').pressSequentially('{{{secret.ADMIN_PASSWORD}}');
     await count(shop, 16);
 
     // A link that opens a new tab carries the recording into it.
@@ -196,7 +196,7 @@ try {
         ['switch-frame', 'main', ''],
         ['click', '#show', ''],
         ['fill', 'input[name="pin"]', '{{secret.PIN}}'],
-        ['fill', 'input[name="note"]', '{ {secret.ADMIN_PASSWORD}}'],
+        ['fill', 'input[name="note"]', '{ { {secret.ADMIN_PASSWORD}}'],
         ['click', '#newtab', ''],
         ['check', '#terms', ''],
     ]);
@@ -205,6 +205,8 @@ try {
     assert.ok(!JSON.stringify(steps).includes('4321'), 'a revealed password is still not recorded');
     assert.ok(!JSON.stringify(steps).includes('forged'), 'nothing from scripted events');
     assert.ok(steps.every((s) => !('secret' in s)));
+    assert.deepEqual(steps.filter((s) => JSON.stringify(s).includes('{{')).map((s) => s.value),
+        ['{{secret.USER_PASSWORD}}', '{{secret.PIN}}'], 'the only templates are the password placeholders');
     assert.ok(steps.every((s) => typeof s.id === 'string' && s.id && !('_frame' in s)));
     await bar(shop).waitFor({ state: 'detached' });
 
