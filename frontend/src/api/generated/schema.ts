@@ -1050,6 +1050,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assignments/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** My Assignments */
+        get: operations["my_assignments_api_assignments_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assistant/conversations": {
         parameters: {
             query?: never;
@@ -3361,6 +3378,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_api_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Read */
+        post: operations["mark_read_api_notifications_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unread Count
+         * @description For the bell. Counts what the list would show (same access rule), over
+         *     the newest 100.
+         */
+        get: operations["unread_count_api_notifications_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding/sample-project": {
         parameters: {
             query?: never;
@@ -3553,6 +3625,26 @@ export interface paths {
         put?: never;
         /** Upload App Build */
         post: operations["upload_app_build_api_projects__project_id__app_builds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/assignee-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Assignee Candidates
+         * @description Active workspace members who can edit tests in the project.
+         */
+        get: operations["assignee_candidates_api_projects__project_id__assignee_candidates_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5543,6 +5635,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/discussion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Discussion
+         * @description Comment counts and who is assigned, per result — for the result list.
+         */
+        get: operations["run_discussion_api_runs__run_id__discussion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/environment-lock": {
         parameters: {
             query?: never;
@@ -5676,6 +5788,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/results/{result_id}/assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign */
+        put: operations["assign_api_runs__run_id__results__result_id__assignment_put"];
+        post?: never;
+        /** Unassign */
+        delete: operations["unassign_api_runs__run_id__results__result_id__assignment_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/results/{result_id}/assignment/done": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Done */
+        post: operations["mark_done_api_runs__run_id__results__result_id__assignment_done_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/results/{result_id}/bundle": {
         parameters: {
             query?: never;
@@ -5690,6 +5837,57 @@ export interface paths {
          *     steps/settings/data are swapped for `{{secret.REPRO_*}}` placeholders.
          */
         get: operations["download_repro_bundle_api_runs__run_id__results__result_id__bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/results/{result_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Comment */
+        post: operations["add_comment_api_runs__run_id__results__result_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/results/{result_id}/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Comment */
+        delete: operations["delete_comment_api_runs__run_id__results__result_id__comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/results/{result_id}/discussion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Discussion */
+        get: operations["get_discussion_api_runs__run_id__results__result_id__discussion_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8253,6 +8451,34 @@ export interface components {
             /** Justification */
             justification: string;
         };
+        /** AssignRequest */
+        AssignRequest: {
+            /** Assignee User Id */
+            assignee_user_id: number;
+        };
+        /** AssignmentOut */
+        AssignmentOut: {
+            assigned_by?: components["schemas"]["Person"] | null;
+            assignee: components["schemas"]["Person"];
+            /**
+             * Carried
+             * @default false
+             */
+            carried?: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Done At */
+            done_at?: string | null;
+            /** Result Id */
+            result_id: number;
+            /** Run Id */
+            run_id: number;
+            /** Status */
+            status: string;
+        };
         /** AuditLogRead */
         AuditLogRead: {
             /** Action */
@@ -8757,16 +8983,23 @@ export interface components {
             /** Run Ids */
             run_ids?: number[] | null;
         };
-        /** CommentCreate */
-        CommentCreate: {
+        /** CommentOut */
+        CommentOut: {
+            author?: components["schemas"]["Person"] | null;
             /** Body */
             body: string;
-            /** Comparison Id */
-            comparison_id?: number | null;
-            /** Group Key */
-            group_key?: string | null;
-            /** Run Id */
-            run_id?: number | null;
+            /**
+             * Can Delete
+             * @default false
+             */
+            can_delete?: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
         };
         /** CommentResolve */
         CommentResolve: {
@@ -8921,6 +9154,14 @@ export interface components {
              */
             warnings?: string[];
         };
+        /** Discussion */
+        Discussion: {
+            assignment?: components["schemas"]["AssignmentOut"] | null;
+            /** Can Write */
+            can_write: boolean;
+            /** Comments */
+            comments: components["schemas"]["CommentOut"][];
+        };
         /** DocumentLinkCreate */
         DocumentLinkCreate: {
             /**
@@ -8935,6 +9176,14 @@ export interface components {
         DomainImport: {
             /** Text */
             text: string;
+        };
+        /** DoneRequest */
+        DoneRequest: {
+            /**
+             * Done
+             * @default true
+             */
+            done?: boolean;
         };
         /** ElementCheck */
         ElementCheck: {
@@ -10037,6 +10286,59 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** MyAssignment */
+        MyAssignment: {
+            assigned_by?: components["schemas"]["Person"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Project Id */
+            project_id: number;
+            /** Project Name */
+            project_name: string;
+            /** Result Id */
+            result_id: number;
+            /** Run Id */
+            run_id: number;
+            /** Status */
+            status: string;
+            /** Test Name */
+            test_name: string;
+        };
+        /** NotificationList */
+        NotificationList: {
+            /** Items */
+            items: components["schemas"]["NotificationOut"][];
+            /** Unread */
+            unread: number;
+        };
+        /** NotificationOut */
+        NotificationOut: {
+            actor?: components["schemas"]["Person"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Project Id */
+            project_id: number;
+            /** Project Name */
+            project_name: string;
+            /** Read */
+            read: boolean;
+            /** Result Id */
+            result_id: number;
+            /** Run Id */
+            run_id: number;
+            /** Test Name */
+            test_name: string;
+        };
         /** OwnerRequest */
         OwnerRequest: {
             /** Owner User Id */
@@ -10083,6 +10385,13 @@ export interface components {
             workspace: {
                 [key: string]: unknown;
             };
+        };
+        /** Person */
+        Person: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
         };
         /** PersonaCreate */
         PersonaCreate: {
@@ -10668,6 +10977,16 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** ReadRequest */
+        ReadRequest: {
+            /**
+             * All
+             * @default false
+             */
+            all?: boolean;
+            /** Ids */
+            ids?: number[];
+        };
         /**
          * ReadinessCommit
          * @description A recent commit with finished runs — options for the commit picker.
@@ -10998,6 +11317,22 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** ResultSummary */
+        ResultSummary: {
+            assignee?: components["schemas"]["Person"] | null;
+            /**
+             * Carried
+             * @default false
+             */
+            carried?: boolean;
+            /**
+             * Comments
+             * @default 0
+             */
+            comments?: number;
+            /** Status */
+            status?: string | null;
+        };
         /** Role */
         Role: {
             /** Description */
@@ -11077,6 +11412,13 @@ export interface components {
             viewports?: (string | {
                 [key: string]: unknown;
             })[] | null;
+        };
+        /** RunDiscussion */
+        RunDiscussion: {
+            /** Results */
+            results: {
+                [key: string]: components["schemas"]["ResultSummary"];
+            };
         };
         /**
          * RunReport
@@ -13287,6 +13629,22 @@ export interface components {
             /** Workspace Id */
             workspace_id: number;
         };
+        /** CommentCreate */
+        app__api__collaboration__CommentCreate: {
+            /** Body */
+            body: string;
+        };
+        /** CommentCreate */
+        app__api__visual_review__CommentCreate: {
+            /** Body */
+            body: string;
+            /** Comparison Id */
+            comparison_id?: number | null;
+            /** Group Key */
+            group_key?: string | null;
+            /** Run Id */
+            run_id?: number | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -15189,6 +15547,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_assignments_api_assignments_mine_get: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyAssignment"][];
                 };
             };
             /** @description Validation Error */
@@ -19832,6 +20221,94 @@ export interface operations {
             };
         };
     };
+    list_notifications_api_notifications_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_read_api_notifications_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unread_count_api_notifications_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+    };
     create_sample_project_api_onboarding_sample_project_post: {
         parameters: {
             query?: never;
@@ -20289,6 +20766,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MobileAppBuildRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assignee_candidates_api_projects__project_id__assignee_candidates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"][];
                 };
             };
             /** @description Validation Error */
@@ -24527,7 +25035,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CommentCreate"];
+                "application/json": components["schemas"]["app__api__visual_review__CommentCreate"];
             };
         };
         responses: {
@@ -25276,6 +25784,37 @@ export interface operations {
             };
         };
     };
+    run_discussion_api_runs__run_id__discussion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDiscussion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_environment_lock_api_runs__run_id__environment_lock_get: {
         parameters: {
             query?: never;
@@ -25475,6 +26014,110 @@ export interface operations {
             };
         };
     };
+    assign_api_runs__run_id__results__result_id__assignment_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                result_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unassign_api_runs__run_id__results__result_id__assignment_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                result_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_done_api_runs__run_id__results__result_id__assignment_done_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                result_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DoneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     download_repro_bundle_api_runs__run_id__results__result_id__bundle_get: {
         parameters: {
             query?: {
@@ -25496,6 +26139,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_comment_api_runs__run_id__results__result_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                result_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app__api__collaboration__CommentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_comment_api_runs__run_id__results__result_id__comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                result_id: number;
+                comment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_discussion_api_runs__run_id__results__result_id__discussion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                result_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Discussion"];
                 };
             };
             /** @description Validation Error */

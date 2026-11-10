@@ -173,6 +173,54 @@ The test's name, result and duration, then whatever the run recorded for it:
 
 The demo's history was generated, so its tests have an error message but no step evidence, screenshots or network requests. A real run shows them here.
 
+## Working on a failure together
+
+When a test fails, someone has to look at it, and the others need to know that somebody is. Above the details of the selected test there is a box for exactly that: who is looking at the failure, and a place to write to each other about it.
+
+![The box above a failed test. Who is looking at this: Assigned, Alex Morgan, asked by Maya Rao, with the buttons Assign to someone else, Mark done and Remove assignment. Comments, 2: one from Maya Rao saying the test started failing after Tuesday's deploy, one from Sam Okafor saying it is the same on Firefox. Below, a field Add a comment for your team and a Comment button](../media/runs/runs/discussion.png)
+
+Assign
+
+Choose a person from the list (the people who can edit tests in this project). They get a notification. *Assign to someone else* hands it over; *Remove assignment* clears it.
+
+Mark done
+
+Says the failure has been dealt with. The person who asked is notified. *Reopen* undoes it.
+
+Comments
+
+Plain text for your team: what you found, what you tried. The person assigned and everyone who already wrote in the thread are notified. You can delete your own comments; a project admin can delete any.
+
+![Tests in this run, five tests. Under the failed test Add a todo the line reads Failed, 5392 ms, Alex Morgan, 2 comments; the four passed tests show only Passed and their time](../media/runs/runs/discussion-list.png)
+
+*The list of tests shows who is on a failure and how many comments it has.*
+
+- **The assignment follows the test.** If the same test fails again in a later run while the assignment is still open, that failure shows the same person, with a link to the run where they were asked. Marking the original as done clears it everywhere.
+- The box is shown for every test that did not pass, and for a passed test only when it already has comments or an assignment.
+- People with the *Viewer* role can read the box but not change it.
+- The thread belongs to the run: deleting the run deletes its comments and assignments.
+
+### Notifications
+
+**Notifications** in the sidebar, under *Ask TraceIQ*, shows a number when something is waiting for you. It opens a panel with two lists.
+
+![The Notifications button in the sidebar with the number 2 on it](../media/runs/runs/bell.png)
+
+![The Notifications panel with the tabs Notifications 2 and Assigned to me 1, a Mark all read button, and two unread lines: Sam Okafor commented on Add a todo, and Maya Rao asked you to look at Add a todo, each with the project, the run number and the time](../media/runs/runs/notifications.png)
+
+Notifications
+
+One line each time someone asks you to look at a failure, replies in a thread you are part of, or marks as done something you assigned. Unread lines have a dot. Clicking a line opens that run on that test and marks the line as read; *Mark all read* clears the number.
+
+Assigned to me
+
+The failures that are yours and still open, in every project you can see.
+
+- You are not notified about your own actions.
+- Several replies to the same thread while you have not looked give one line, not one per reply.
+- Notifications appear in TraceIQ only; no email is sent for them. Read ones are removed after 30 days, any after 90.
+- If you lose access to a project, its notifications disappear from your list.
+
 ## Watch it in use
 
 [▶ Watch the video](../media/runs/runs/walkthrough.mp4)
@@ -180,6 +228,13 @@ The demo's history was generated, so its tests have an error message but no step
 *About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.*
 
 ## How to…
+
+### …ask a colleague to look at a failure
+
+1. Open the run and select the failed test in *Tests in this run*.
+2. In the box above its details, press **Assign**, choose the person and press **Assign** again.
+3. Write what you know in **Add a comment for your team** and press **Comment**.
+4. They find it under **Notifications** in the sidebar, and under *Assigned to me* there until they press **Mark done**.
 
 ### …find out why last night's run failed
 

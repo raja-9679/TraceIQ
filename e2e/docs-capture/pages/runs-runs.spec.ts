@@ -139,3 +139,39 @@ test('Runs › Runs', async ({ page, browser }) => {
         await caption(p, '');
     });
 });
+
+// "Working on a failure together": the demo seeds one failed result that is
+// assigned to the demo's owner, with a short thread and two notifications
+// (app/services/demo_seed/collab.py). Nothing is clicked that would change
+// them — no comment is posted and no notification is opened.
+test('Runs: discussion and notifications', async ({ page }) => {
+    await page.goto('/overview');
+    const mine = await page.evaluate(async () => {
+        const res = await fetch('/api/assignments/mine', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+        return (await res.json()) as { run_id: number; result_id: number }[];
+    });
+    expect(mine.length, 'the demo assigns one failed result to its owner').toBeGreaterThan(0);
+    await page.goto(`/runs/${mine[0].run_id}?result=${mine[0].result_id}`);
+    const discussion = page.getByRole('region', { name: 'Discussion' });
+    await expect(discussion.getByText('Assigned', { exact: true })).toBeVisible();
+    await settle(page);
+    await discussion.scrollIntoViewIfNeeded();
+    await page.mouse.move(700, 5);
+    await discussion.screenshot({ path: out('runs/runs/discussion.png') });
+
+    // The list on the left says who is on it and how many comments there are.
+    const list = page.locator('main section').filter({ has: page.getByRole('heading', { name: 'Tests in this run' }) }).first();
+    await list.screenshot({ path: out('runs/runs/discussion-list.png') });
+
+    const bell = page.getByRole('button', { name: /^Notifications, 2 unread/ }).first();
+    await expect(bell).toBeVisible();
+    await bell.screenshot({ path: out('runs/runs/bell.png') });
+    await bell.click();
+    const drawer = page.getByRole('dialog', { name: 'Notifications' });
+    await expect(drawer.getByText('asked you to look at')).toBeVisible();
+    await page.waitForTimeout(600); // the drawer slides in
+    // Only the top of the drawer: the rest is empty with two notifications.
+    const box = await drawer.boundingBox();
+    await page.screenshot({ path: out('runs/runs/notifications.png'),
+        clip: { x: box!.x, y: box!.y, width: box!.width, height: 320 } });
+});

@@ -147,3 +147,8 @@ Still open / new this round:
 - Cosmetic: long emails wrap mid-word; badge ① clips "PROJECT" (Incidents, Release readiness) and ⑦ covers "R" of Runs breadcrumb; focus ring on the sidebar workspace switcher in Monitors/Workspace/API keys pictures; agents sessions close-up is 1094 px tall; trust-center public link shows http://frontend/.
 - Visual review, App builds, Evidence packs, On-call stay empty (nothing seeded).
 - Walkthrough MP4s still not re-recorded (no ffmpeg); edited record() blocks unrun.
+
+### 2026-11-10 (recorder, invitations, Get started, failure discussion)
+- The sidebar gained a **Notifications** row under Ask TraceIQ: every guide picture that shows the sidebar predates it. Needs a full re-capture.
+- A full re-capture needs the docs account's demo workspace rebuilt first: its data is from 2026-10-26, so Overview's 14-day chart is empty (today-overview.spec.ts fails at the bar hover), Release readiness reads "Not ready" on evidence age, and the "Add a todo" quarantine was re-created by hand until 2026-11-24. The demo seed now also adds a discussed failure (demo_seed/collab.py); the current docs demo got the same rows by hand.
+- Overview scrolls sideways at phone width (existing, not from the Get started card). Overview's tiles count runs of all projects while the card is per project.

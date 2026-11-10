@@ -606,6 +606,79 @@
         "title": "ApproveIn",
         "type": "object"
       },
+      "AssignRequest": {
+        "properties": {
+          "assignee_user_id": {
+            "title": "Assignee User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "assignee_user_id"
+        ],
+        "title": "AssignRequest",
+        "type": "object"
+      },
+      "AssignmentOut": {
+        "properties": {
+          "assigned_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignee": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "carried": {
+            "default": false,
+            "title": "Carried",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "done_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done At"
+          },
+          "result_id": {
+            "title": "Result Id",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assignee",
+          "status",
+          "created_at",
+          "run_id",
+          "result_id"
+        ],
+        "title": "AssignmentOut",
+        "type": "object"
+      },
       "AuditLogRead": {
         "properties": {
           "action": {
@@ -2088,52 +2161,43 @@
         "title": "ClearRequest",
         "type": "object"
       },
-      "CommentCreate": {
+      "CommentOut": {
         "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "body": {
-            "maxLength": 4000,
-            "minLength": 1,
             "title": "Body",
             "type": "string"
           },
-          "comparison_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Comparison Id"
+          "can_delete": {
+            "default": false,
+            "title": "Can Delete",
+            "type": "boolean"
           },
-          "group_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Key"
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
           },
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Run Id"
+          "id": {
+            "title": "Id",
+            "type": "integer"
           }
         },
         "required": [
-          "body"
+          "id",
+          "body",
+          "created_at"
         ],
-        "title": "CommentCreate",
+        "title": "CommentOut",
         "type": "object"
       },
       "CommentResolve": {
@@ -2609,6 +2673,37 @@
         "title": "DerivedRead",
         "type": "object"
       },
+      "Discussion": {
+        "properties": {
+          "assignment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssignmentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "can_write": {
+            "title": "Can Write",
+            "type": "boolean"
+          },
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/CommentOut"
+            },
+            "title": "Comments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "comments",
+          "can_write"
+        ],
+        "title": "Discussion",
+        "type": "object"
+      },
       "DocumentLinkCreate": {
         "properties": {
           "expires_in_days": {
@@ -2642,6 +2737,17 @@
           "text"
         ],
         "title": "DomainImport",
+        "type": "object"
+      },
+      "DoneRequest": {
+        "properties": {
+          "done": {
+            "default": true,
+            "title": "Done",
+            "type": "boolean"
+          }
+        },
+        "title": "DoneRequest",
         "type": "object"
       },
       "ElementCheck": {
@@ -5883,6 +5989,145 @@
         "title": "MonitoredPageIn",
         "type": "object"
       },
+      "MyAssignment": {
+        "properties": {
+          "assigned_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "result_id": {
+            "title": "Result Id",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "test_name": {
+            "title": "Test Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_name",
+          "run_id",
+          "result_id",
+          "test_name",
+          "status",
+          "created_at"
+        ],
+        "title": "MyAssignment",
+        "type": "object"
+      },
+      "NotificationList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "unread": {
+            "title": "Unread",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "unread"
+        ],
+        "title": "NotificationList",
+        "type": "object"
+      },
+      "NotificationOut": {
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "result_id": {
+            "title": "Result Id",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "test_name": {
+            "title": "Test Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "read",
+          "project_id",
+          "project_name",
+          "run_id",
+          "result_id",
+          "test_name"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
       "OwnerRequest": {
         "properties": {
           "owner_user_id": {
@@ -6005,6 +6250,24 @@
           "project"
         ],
         "title": "PermissionsResponse",
+        "type": "object"
+      },
+      "Person": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Person",
         "type": "object"
       },
       "PersonaCreate": {
@@ -7429,6 +7692,25 @@
         "title": "QuarantineRequest",
         "type": "object"
       },
+      "ReadRequest": {
+        "properties": {
+          "all": {
+            "default": false,
+            "title": "All",
+            "type": "boolean"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 200,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "title": "ReadRequest",
+        "type": "object"
+      },
       "ReadinessCommit": {
         "description": "A recent commit with finished runs — options for the commit picker.",
         "properties": {
@@ -8464,6 +8746,43 @@
         "title": "ResetPasswordRequest",
         "type": "object"
       },
+      "ResultSummary": {
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "carried": {
+            "default": false,
+            "title": "Carried",
+            "type": "boolean"
+          },
+          "comments": {
+            "default": 0,
+            "title": "Comments",
+            "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "ResultSummary",
+        "type": "object"
+      },
       "Role": {
         "properties": {
           "description": {
@@ -8789,6 +9108,22 @@
           }
         },
         "title": "RunCreateContext",
+        "type": "object"
+      },
+      "RunDiscussion": {
+        "properties": {
+          "results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ResultSummary"
+            },
+            "title": "Results",
+            "type": "object"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "RunDiscussion",
         "type": "object"
       },
       "RunReport": {
@@ -15492,6 +15827,69 @@
         ],
         "title": "WorkspaceWebhookRead",
         "type": "object"
+      },
+      "app__api__collaboration__CommentCreate": {
+        "properties": {
+          "body": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "CommentCreate",
+        "type": "object"
+      },
+      "app__api__visual_review__CommentCreate": {
+        "properties": {
+          "body": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "comparison_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Id"
+          },
+          "group_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Key"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "CommentCreate",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -18482,6 +18880,59 @@
         "summary": "Get Artifact Url",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/api/assignments/mine": {
+      "get": {
+        "operationId": "my_assignments_api_assignments_mine_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "pattern": "^(open|done|all)$",
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyAssignment"
+                  },
+                  "title": "Response My Assignments Api Assignments Mine Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "My Assignments",
+        "tags": [
+          "collaboration"
         ]
       }
     },
@@ -25544,6 +25995,137 @@
         ]
       }
     },
+    "/api/notifications": {
+      "get": {
+        "operationId": "list_notifications_api_notifications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Notifications",
+        "tags": [
+          "collaboration"
+        ]
+      }
+    },
+    "/api/notifications/read": {
+      "post": {
+        "operationId": "mark_read_api_notifications_read_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Mark Read Api Notifications Read Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Mark Read",
+        "tags": [
+          "collaboration"
+        ]
+      }
+    },
+    "/api/notifications/unread-count": {
+      "get": {
+        "description": "For the bell. Counts what the list would show (same access rule), over\nthe newest 100.",
+        "operationId": "unread_count_api_notifications_unread_count_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Unread Count Api Notifications Unread Count Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Unread Count",
+        "tags": [
+          "collaboration"
+        ]
+      }
+    },
     "/api/onboarding/sample-project": {
       "post": {
         "operationId": "create_sample_project_api_onboarding_sample_project_post",
@@ -26280,6 +26862,58 @@
         "summary": "Upload App Build",
         "tags": [
           "app-builds"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/assignee-candidates": {
+      "get": {
+        "description": "Active workspace members who can edit tests in the project.",
+        "operationId": "assignee_candidates_api_projects__project_id__assignee_candidates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Person"
+                  },
+                  "title": "Response Assignee Candidates Api Projects  Project Id  Assignee Candidates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Assignee Candidates",
+        "tags": [
+          "collaboration"
         ]
       }
     },
@@ -33454,7 +34088,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommentCreate"
+                "$ref": "#/components/schemas/app__api__visual_review__CommentCreate"
               }
             }
           },
@@ -34851,6 +35485,54 @@
         ]
       }
     },
+    "/api/runs/{run_id}/discussion": {
+      "get": {
+        "description": "Comment counts and who is assigned, per result — for the result list.",
+        "operationId": "run_discussion_api_runs__run_id__discussion_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDiscussion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Run Discussion",
+        "tags": [
+          "collaboration"
+        ]
+      }
+    },
     "/api/runs/{run_id}/environment-lock": {
       "get": {
         "description": "WP16c: is this run waiting for, or holding, an exclusive environment?\n{state: none | waiting | holding, environment_id, environment,\nholder_run_id, since}. Viewer on the run's project.",
@@ -35197,6 +35879,190 @@
         ]
       }
     },
+    "/api/runs/{run_id}/results/{result_id}/assignment": {
+      "delete": {
+        "operationId": "unassign_api_runs__run_id__results__result_id__assignment_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "title": "Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Unassign",
+        "tags": [
+          "collaboration"
+        ]
+      },
+      "put": {
+        "operationId": "assign_api_runs__run_id__results__result_id__assignment_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "title": "Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Assign",
+        "tags": [
+          "collaboration"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/results/{result_id}/assignment/done": {
+      "post": {
+        "operationId": "mark_done_api_runs__run_id__results__result_id__assignment_done_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "title": "Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DoneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Mark Done",
+        "tags": [
+          "collaboration"
+        ]
+      }
+    },
     "/api/runs/{run_id}/results/{result_id}/bundle": {
       "get": {
         "description": "A zip that replays one result locally. Never contains a secret value:\n`ProjectSecret` is not read at all, and literal credentials found in\nsteps/settings/data are swapped for `{{secret.REPRO_*}}` placeholders.",
@@ -35259,6 +36125,191 @@
         "summary": "Download Repro Bundle",
         "tags": [
           "developer"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/results/{result_id}/comments": {
+      "post": {
+        "operationId": "add_comment_api_runs__run_id__results__result_id__comments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "title": "Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__api__collaboration__CommentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Add Comment",
+        "tags": [
+          "collaboration"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/results/{result_id}/comments/{comment_id}": {
+      "delete": {
+        "operationId": "delete_comment_api_runs__run_id__results__result_id__comments__comment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "title": "Result Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "comment_id",
+            "required": true,
+            "schema": {
+              "title": "Comment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Delete Comment",
+        "tags": [
+          "collaboration"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/results/{result_id}/discussion": {
+      "get": {
+        "operationId": "get_discussion_api_runs__run_id__results__result_id__discussion_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "title": "Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Discussion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Discussion",
+        "tags": [
+          "collaboration"
         ]
       }
     },

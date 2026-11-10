@@ -1,6 +1,6 @@
 import ServerMetricsPanel from '@/components/load/ServerMetricsPanel';
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl, triggerRun } from "@/lib/api";
 import { llmProvidersApi } from "@/api/llmProviders";
 import { Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Activity, LayoutGrid, Bug, PlayCircle, Server, Globe, Zap, ExternalLink, GitCompareArrows, MonitorSmartphone, Ban } from "lucide-react";
@@ -10,6 +10,9 @@ import CreateTicketDialog from "@/components/CreateTicketDialog";
 import { toast } from "sonner";
 import { errorKindLook, isLive, isNoVerdict, isTerminal, passRate as resultPassRate, statusLabel } from "@/lib/runStatus";
 import { CancelRunButton } from "@/components/runs/CancelRunButton";
+import { ResultDiscussion } from "@/components/collab/ResultDiscussion";
+import { summaryLabel } from "@/components/collab/text";
+import { collabApi } from "@/api/collaboration";
 import { Button } from "@/components/ui/button";
 import { KindChip, ListCard, ListRow, PageHeader, Pill, SplitView } from "@/components/redesign/primitives";
 import { RunEnvironmentBanner, ValidationRunBanner } from "@/components/environments/RunEnvironmentBanner";
@@ -467,7 +470,7 @@ export default function TestRunDetails() {
                         )}
 
                         {run.results && run.results.length > 0 && (
-                            <ResultsSplit runId={run.id} results={run.results} networkEvents={run.network_events || []}
+                            <ResultsSplit runId={run.id} projectId={run.project_id ?? null} results={run.results} networkEvents={run.network_events || []}
                                 search={testSearchTerm} onSearch={setTestSearchTerm} focus={evidenceFocus} />
                         )}
                     </Tabs.Content>
@@ -940,10 +943,26 @@ function unwrapJson(str: string) {
 
 // Direction A: the run's tests as a list, with the selected one shown in full
 // on the right (failed tests first, so the one you came for is already open).
-function ResultsSplit({ runId, results, networkEvents, search, onSearch, focus = null }: {
-    runId: number; results: any[]; networkEvents: any[]; search: string; onSearch: (v: string) => void; focus?: EvidenceFocus | null;
+function ResultsSplit({ runId, projectId, results, networkEvents, search, onSearch, focus = null }: {
+    runId: number; projectId: number | null; results: any[]; networkEvents: any[]; search: string; onSearch: (v: string) => void; focus?: EvidenceFocus | null;
 }) {
-    const [selectedId, setSelectedId] = useState<number | null>(null);
+    // ?result=<id> opens the run on that result: notifications and "assigned
+    // to me" link here. Followed again whenever the address changes, so a
+    // second notification about the same run still moves the selection.
+    const [searchParams] = useSearchParams();
+    const linked = Number(searchParams.get('result')) || null;
+    const [selectedId, setSelectedId] = useState<number | null>(linked);
+    const [seenLinked, setSeenLinked] = useState<number | null>(linked);
+    if (linked !== seenLinked) {
+        setSeenLinked(linked);
+        if (linked) setSelectedId(linked);
+    }
+    // Who is on each result and how many comments it has, for the list.
+    const { data: discussion } = useQuery({
+        queryKey: ['run-discussion', runId],
+        queryFn: () => collabApi.runSummary(runId),
+        staleTime: 30_000,
+    });
     // An evidence reference was clicked in the analysis panel: select the
     // cited result (adjusted during render, React's pattern for state derived
     // from a prop change).
@@ -975,21 +994,26 @@ function ResultsSplit({ runId, results, networkEvents, search, onSearch, focus =
                             onSelect={() => setSelectedId(r.id)}
                             leading={<KindChip kind={r.status === 'passed' ? 'pass' : (r.status === 'failed' || r.status === 'error') ? 'failure' : 'skip'} size="sm" />}
                             title={r.test_name}
-                            meta={[statusLabel(r.status), !isNoVerdict(r.status) ? errorKindLook(r.error_kind)?.label : null, `${Math.round(r.duration_ms)}ms`]
+                            meta={[statusLabel(r.status), !isNoVerdict(r.status) ? errorKindLook(r.error_kind)?.label : null, `${Math.round(r.duration_ms)}ms`,
+                                summaryLabel(discussion?.[String(r.id)])]
                                 .filter(Boolean).join(' · ')}
                         />
                     ))}
                 </ListCard>
             }
             detail={selected && (
-                <TestCaseResultItem
-                    key={selected.id}
-                    variant="detail"
-                    result={selected}
-                    runId={runId}
-                    networkEvents={networkEvents.filter((e: any) => e.testCaseName === selected.test_name)}
-                    focus={focus?.resultId === selected.id ? focus : null}
-                />
+                <div className="flex flex-col gap-5">
+                    <ResultDiscussion key={`d-${selected.id}`} runId={runId} resultId={selected.id} projectId={projectId}
+                        failed={selected.status !== 'passed'} />
+                    <TestCaseResultItem
+                        key={selected.id}
+                        variant="detail"
+                        result={selected}
+                        runId={runId}
+                        networkEvents={networkEvents.filter((e: any) => e.testCaseName === selected.test_name)}
+                        focus={focus?.resultId === selected.id ? focus : null}
+                    />
+                </div>
             )}
         />
     );

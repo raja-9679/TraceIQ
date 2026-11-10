@@ -1721,6 +1721,35 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   (`owner_of_step`). Not in suite hooks (refused). `GET
   /api/cases/{id}/used-by`; `GET /api/cases?q=` searches names. Worker
   rebuild needed only for the clear error text and the grouping.
+- **Working on a failure together (2026-11-10)** — migration `e162b3c4d617`
+  (`resultcomment`, `resultassignment`, `notification`; project-keyed RLS
+  policies; entries in PURGE_PLAN, entity_delete ON_DELETE, erasure). API
+  `app/api/collaboration.py`. **Comments** on a run's result: plain text
+  (control chars stripped, ≤4000, rendered escaped), viewer reads, editor
+  writes, delete = author or project admin; audit records where + length,
+  never the text; the thread dies with the run (`test_run_id` FK, DELETE).
+  **Assignment**: one per result (`PUT …/assignment {assignee_user_id}`, must
+  be an active project EDITOR — one 400 for every "can't", so no account
+  oracle); `POST …/assignment/done` by an editor or the assignee. It **carries
+  forward on read**: a later non-passing result of the same `test_case_id`
+  shows the newest OPEN assignment (`carried: true`, with the run it was made
+  in); nothing is copied, so closing the original clears it everywhere.
+  **Notifications** (`GET /notifications`, `/unread-count`, `POST
+  /notifications/read`, `GET /assignments/mine`): a row holds a kind + actor +
+  ids and NO text or test name — names are looked up on read after
+  re-checking the reader's project access, so losing access hides them; one
+  UNREAD row per (person, result, kind); never for your own action; humans
+  only (API keys 403). Recipients: assignee on assign, assignee (own or
+  carried) + earlier commenters on comment, the assigner on done. In-app only,
+  no email. Beat `purge-notifications` daily (read 30 d, any 90 d). UI:
+  `components/collab/` — `ResultDiscussion` above the selected result on the
+  run page (`?result=<id>` deep link, followed again when it changes), labels
+  in the result list from `GET /runs/{id}/discussion`, bell in the sidebar /
+  rail / phone header (`NotificationsDrawer`, unread polled every 60 s). Demo
+  seed `demo_seed/collab.py` gives the owner an assigned failure, a thread
+  and two notifications. Guide: Runs → "Working on a failure together".
+  Open: every guide picture that shows the sidebar predates the Notifications
+  row (a full re-capture needs the demo rebuilt); no @mentions, no email.
 - **Get started checklist (2026-11-10)** — no migration, nothing stored.
   `GET /api/projects/{id}/getting-started` (in `app/api/onboarding.py`; viewer;
   project-scoped keys honoured; typed `GettingStarted`) answers each step from

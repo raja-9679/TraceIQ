@@ -251,6 +251,52 @@
         <p>The demo's history was generated, so its tests have an error message but no step
           evidence, screenshots or network requests. A real run shows them here.</p>
 
+        <h2 id="discussion" data-toc="Working on a failure together">Working on a failure together</h2>
+        <p>When a test fails, someone has to look at it, and the others need to know that somebody
+          is. Above the details of the selected test there is a box for exactly that: who is
+          looking at the failure, and a place to write to each other about it.</p>
+        <figure>
+          <div class="frame"><img src="../media/runs/runs/discussion.png" alt="The box above a failed test. Who is looking at this: Assigned, Alex Morgan, asked by Maya Rao, with the buttons Assign to someone else, Mark done and Remove assignment. Comments, 2: one from Maya Rao saying the test started failing after Tuesday's deploy, one from Sam Okafor saying it is the same on Firefox. Below, a field Add a comment for your team and a Comment button" loading="lazy"></div>
+        </figure>
+        <dl class="terms">
+          <dt>Assign</dt><dd>Choose a person from the list (the people who can edit tests in this project). They get a notification. <em>Assign to someone else</em> hands it over; <em>Remove assignment</em> clears it.</dd>
+          <dt>Mark done</dt><dd>Says the failure has been dealt with. The person who asked is notified. <em>Reopen</em> undoes it.</dd>
+          <dt>Comments</dt><dd>Plain text for your team: what you found, what you tried. The person assigned and everyone who already wrote in the thread are notified. You can delete your own comments; a project admin can delete any.</dd>
+        </dl>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/discussion-list.png" alt="Tests in this run, five tests. Under the failed test Add a todo the line reads Failed, 5392 ms, Alex Morgan, 2 comments; the four passed tests show only Passed and their time" loading="lazy"></div>
+          <figcaption>The list of tests shows who is on a failure and how many comments it has.</figcaption>
+        </figure>
+        <ul>
+          <li><strong>The assignment follows the test.</strong> If the same test fails again in a later run
+            while the assignment is still open, that failure shows the same person, with a link to the
+            run where they were asked. Marking the original as done clears it everywhere.</li>
+          <li>The box is shown for every test that did not pass, and for a passed test only when it
+            already has comments or an assignment.</li>
+          <li>People with the <em>Viewer</em> role can read the box but not change it.</li>
+          <li>The thread belongs to the run: deleting the run deletes its comments and assignments.</li>
+        </ul>
+
+        <h3 id="notifications">Notifications</h3>
+        <p><strong>Notifications</strong> in the sidebar, under <em>Ask TraceIQ</em>, shows a number when
+          something is waiting for you. It opens a panel with two lists.</p>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/bell.png" alt="The Notifications button in the sidebar with the number 2 on it" loading="lazy"></div>
+        </figure>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/notifications.png" alt="The Notifications panel with the tabs Notifications 2 and Assigned to me 1, a Mark all read button, and two unread lines: Sam Okafor commented on Add a todo, and Maya Rao asked you to look at Add a todo, each with the project, the run number and the time" loading="lazy"></div>
+        </figure>
+        <dl class="terms">
+          <dt>Notifications</dt><dd>One line each time someone asks you to look at a failure, replies in a thread you are part of, or marks as done something you assigned. Unread lines have a dot. Clicking a line opens that run on that test and marks the line as read; <em>Mark all read</em> clears the number.</dd>
+          <dt>Assigned to me</dt><dd>The failures that are yours and still open, in every project you can see.</dd>
+        </dl>
+        <ul>
+          <li>You are not notified about your own actions.</li>
+          <li>Several replies to the same thread while you have not looked give one line, not one per reply.</li>
+          <li>Notifications appear in TraceIQ only; no email is sent for them. Read ones are removed after 30 days, any after 90.</li>
+          <li>If you lose access to a project, its notifications disappear from your list.</li>
+        </ul>
+
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">
           <div class="frame">
@@ -263,7 +309,14 @@
         </figure>
 
         <h2 id="how-to" data-toc="How to…">How to…</h2>
-        <h3>…find out why last night's run failed</h3>
+                <h3>…ask a colleague to look at a failure</h3>
+        <ol class="steps">
+          <li>Open the run and select the failed test in <em>Tests in this run</em>.</li>
+          <li>In the box above its details, press <strong>Assign</strong>, choose the person and press <strong>Assign</strong> again.</li>
+          <li>Write what you know in <strong>Add a comment for your team</strong> and press <strong>Comment</strong>.</li>
+          <li>They find it under <strong>Notifications</strong> in the sidebar, and under <em>Assigned to me</em> there until they press <strong>Mark done</strong>.</li>
+        </ol>
+<h3>…find out why last night's run failed</h3>
         <ol class="steps">
           <li>On the Runs list, press <strong>Failed</strong>.</li>
           <li>Click the run. The failed test is already selected on the right.</li>
@@ -301,7 +354,7 @@
         </div>
 
         <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
-        <p class="footer-note">Describes the Runs page and a run's page as of October 2026.</p>
+        <p class="footer-note">Describes the Runs page and a run's page as of November 2026.</p>
       </div>
     </main>
 

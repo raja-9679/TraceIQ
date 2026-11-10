@@ -11,12 +11,16 @@ import {
     ChevronDown,
     Plus,
     Sparkles,
+    Bell,
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getProjects, getWorkspaces } from '@/lib/api';
 import DemoBadge from '@/components/demo/DemoBadge';
 import AssistantDrawer from '@/components/assistant/AssistantDrawer';
+import { NotificationsDrawer } from '@/components/collab/NotificationsDrawer';
+import { useUnreadNotifications } from '@/components/collab/useUnreadNotifications';
+import { countLabel } from '@/components/collab/text';
 import { usePermission } from '@/hooks/usePermission';
 import {
     DropdownMenu,
@@ -197,6 +201,11 @@ export default function DashboardLayout() {
     // the phone header.
     const [assistantOpen, setAssistantOpen] = useState(false);
 
+    // The bell: failed results assigned to you and replies in your threads.
+    const [notificationsOpen, setNotificationsOpen] = useState(false);
+    const unread = countLabel(useUnreadNotifications());
+    const bellLabel = unread ? `Notifications, ${unread} unread` : 'Notifications';
+
     const [selectedProjectId, setSelectedProjectId] = useState<number | null>(() => {
         const saved = localStorage.getItem('activeProjectId');
         return saved ? parseInt(saved) : null;
@@ -334,6 +343,17 @@ export default function DashboardLayout() {
                 Ask TraceIQ
             </button>
 
+            <button
+                type="button"
+                onClick={() => setNotificationsOpen(true)}
+                aria-label={bellLabel}
+                className="flex min-h-10 items-center gap-2 rounded-full border border-border bg-white px-4 text-sm font-semibold text-ink transition-colors hover:bg-background"
+            >
+                <Bell className="h-4 w-4" aria-hidden="true" />
+                <span className="flex-1 text-left">Notifications</span>
+                {unread && <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-bold text-white">{unread}</span>}
+            </button>
+
             <nav aria-label="Main" className="flex flex-col gap-0.5">
                 {places.map((place) => {
                     const active = isIn(location.pathname, place.match);
@@ -433,6 +453,11 @@ export default function DashboardLayout() {
 
             <RailButton label="Ask TraceIQ" onClick={() => setAssistantOpen(true)}>
                 <Sparkles className="h-[18px] w-[18px]" strokeWidth={1.9} />
+            </RailButton>
+
+            <RailButton label={bellLabel} onClick={() => setNotificationsOpen(true)}>
+                <Bell className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                {unread && <span aria-hidden="true" className="absolute right-0.5 top-0.5 min-w-4 rounded-full bg-ink px-1 text-center text-[10px] font-bold leading-4 text-white">{unread}</span>}
             </RailButton>
 
             <nav aria-label="Main" className="flex flex-col items-center gap-1">
@@ -552,8 +577,17 @@ export default function DashboardLayout() {
                     {isDemoProject(activeProject) && <DemoBadge />}
                     <button
                         type="button"
+                        onClick={() => setNotificationsOpen(true)}
+                        aria-label={bellLabel}
+                        className="relative ml-auto flex h-9 w-9 flex-none items-center justify-center rounded-full border border-border bg-white text-ink hover:bg-background"
+                    >
+                        <Bell className="h-4 w-4" aria-hidden="true" />
+                        {unread && <span aria-hidden="true" className="absolute -right-1 -top-1 min-w-4 rounded-full bg-ink px-1 text-center text-[10px] font-bold leading-4 text-white">{unread}</span>}
+                    </button>
+                    <button
+                        type="button"
                         onClick={() => setAssistantOpen(true)}
-                        className="ml-auto flex h-9 flex-none items-center gap-1.5 rounded-full bg-ink px-3.5 text-[13px] font-semibold text-white hover:bg-ink/85"
+                        className="flex h-9 flex-none items-center gap-1.5 rounded-full bg-ink px-3.5 text-[13px] font-semibold text-white hover:bg-ink/85"
                     >
                         <Sparkles className="h-4 w-4" aria-hidden="true" />
                         Ask TraceIQ
@@ -565,6 +599,7 @@ export default function DashboardLayout() {
                 </main>
             </div>
 
+            <NotificationsDrawer open={notificationsOpen} onOpenChange={setNotificationsOpen} />
             <AssistantDrawer
                 open={assistantOpen}
                 onOpenChange={setAssistantOpen}
