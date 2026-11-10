@@ -3571,6 +3571,82 @@
         "title": "GenerateBody",
         "type": "object"
       },
+      "GettingStarted": {
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "first_suite_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Suite Id"
+          },
+          "latest_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run Id"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/GettingStartedStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "steps",
+          "done",
+          "total",
+          "complete"
+        ],
+        "title": "GettingStarted",
+        "type": "object"
+      },
+      "GettingStartedStep": {
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "done"
+        ],
+        "title": "GettingStartedStep",
+        "type": "object"
+      },
       "GroupDecision": {
         "properties": {
           "note": {
@@ -27841,6 +27917,53 @@
         "summary": "Project Hosts",
         "tags": [
           "frontend-quality"
+        ]
+      }
+    },
+    "/api/projects/{project_id}/getting-started": {
+      "get": {
+        "operationId": "getting_started_api_projects__project_id__getting_started_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GettingStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Getting Started",
+        "tags": [
+          "onboarding"
         ]
       }
     },

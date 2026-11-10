@@ -3911,6 +3911,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/getting-started": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Getting Started */
+        get: operations["getting_started_api_projects__project_id__getting_started_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/har-files": {
         parameters: {
             query?: never;
@@ -9240,6 +9257,30 @@ export interface components {
             target_url?: string | null;
             /** Test Suite Id */
             test_suite_id: number;
+        };
+        /** GettingStarted */
+        GettingStarted: {
+            /** Complete */
+            complete: boolean;
+            /** Done */
+            done: number;
+            /** First Suite Id */
+            first_suite_id?: number | null;
+            /** Latest Run Id */
+            latest_run_id?: number | null;
+            /** Project Id */
+            project_id: number;
+            /** Steps */
+            steps: components["schemas"]["GettingStartedStep"][];
+            /** Total */
+            total: number;
+        };
+        /** GettingStartedStep */
+        GettingStartedStep: {
+            /** Done */
+            done: boolean;
+            /** Key */
+            key: string;
         };
         /** GroupDecision */
         GroupDecision: {
@@ -21218,6 +21259,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getting_started_api_projects__project_id__getting_started_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GettingStarted"];
                 };
             };
             /** @description Validation Error */

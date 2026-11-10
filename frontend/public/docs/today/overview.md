@@ -101,6 +101,37 @@ The 10 newest runs across all your projects, newest first. Each row is one run:
 
 The **All runs** button in the top-right corner opens the full list of runs, with search and filters by status, browser and device. It is the same page as **Runs** in the sidebar.
 
+## Get started
+
+In a project that is still new, a **Get started** card sits above the tiles. It lists the first things to do, in order, and ticks each one off when it has actually happened in the project you have selected in the sidebar.
+
+![The Get started card: 0 of 5 done, a Hide this button, and five numbered steps, each with a short explanation and a button: 1 Create your first test (Go to suites), 2 Run it (Go to suites), 3 See it pass (Open runs), 4 Run it automatically (Add a schedule), 5 Invite a teammate (Invite people). Step 1 has the dark button because it is the next one to do](../media/today/overview/get-started.png)
+
+Create your first test
+
+Done when the project has at least one test. The button opens the suites, or goes straight to a new test when the project already has a suite. In the step editor, *Record* writes the steps for you while you use your site.
+
+Run it
+
+Done when the project has a run, whatever its result.
+
+See it pass
+
+Done when a run of this project has passed. Until then the button opens the newest run, where you can see which step failed and why.
+
+Run it automatically
+
+Done when the project has a schedule.
+
+Invite a teammate
+
+Done when the workspace has another member or a pending invitation. This step is listed only for people who are allowed to invite (workspace admins).
+
+- The step with the **dark button** is the next one to do; you can do them in any order.
+- The card **goes away by itself** when every step is done. That is why you will not see it in the demo workspace, where everything has been done already.
+- **Hide this** removes the card for this project in the browser you are using. It does not change anything for other people.
+- The steps look at the selected project only, while the four tiles below count runs of all your projects. A new project can therefore show "0 of 5 done" above tiles that already have numbers.
+
 ## Watch it in use
 
 [▶ Watch the video](../media/today/overview/walkthrough.mp4)

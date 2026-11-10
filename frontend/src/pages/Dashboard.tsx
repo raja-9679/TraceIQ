@@ -5,6 +5,7 @@ import { api, getRuns, type TestRun } from '@/lib/api';
 import { cn, formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
+import { GettingStarted } from '@/components/onboarding/GettingStarted';
 import { Button } from '@/components/ui/button';
 import { EmptyState, Eyebrow, KindChip, PageHeader, Pill } from '@/components/redesign/primitives';
 import type { Tone } from '@/components/redesign/kinds';
@@ -99,6 +100,8 @@ export default function Dashboard() {
                 subtitle={`Welcome back, ${firstName}. How test runs are going across the workspace.`}
                 actions={<Button asChild variant="outline"><Link to="/runs">All runs</Link></Button>}
             />
+
+            {activeProjectId && <GettingStarted key={activeProjectId} projectId={activeProjectId} />}
 
             {isLoading ? (
                 <>

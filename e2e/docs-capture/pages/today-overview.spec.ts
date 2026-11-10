@@ -87,3 +87,26 @@ test('Today › Overview', async ({ page, browser }) => {
         await caption(p, '');
     });
 });
+
+// The "Get started" card is gone once a project has a test, a run, a passing
+// run, a schedule and a second person — which the demo project has. The
+// docs account's own first project is empty, so the card is shown there.
+test('Today › Overview: get started', async ({ page }) => {
+    await page.goto('/overview');
+    const first = await page.evaluate(async () => {
+        const res = await fetch('/api/projects', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+        const projects: { id: number; name: string }[] = await res.json();
+        return projects.find((p) => p.name === 'My first project')?.id ?? null;
+    });
+    expect(first, 'the docs account keeps its empty first project').not.toBeNull();
+    await page.evaluate((id) => {
+        localStorage.setItem('activeProjectId', String(id));
+        localStorage.removeItem(`tiq_getting_started_hidden_${id}`);
+    }, first);
+    await page.reload();
+    const card = page.locator('section[aria-labelledby="getting-started-title"]');
+    await expect(card.getByRole('heading', { name: 'Get started' })).toBeVisible();
+    await settle(page);
+    await page.mouse.move(700, 5);
+    await card.screenshot({ path: out(`${DIR}/get-started.png`) });
+});

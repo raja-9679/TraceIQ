@@ -1721,6 +1721,21 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   (`owner_of_step`). Not in suite hooks (refused). `GET
   /api/cases/{id}/used-by`; `GET /api/cases?q=` searches names. Worker
   rebuild needed only for the clear error text and the grouping.
+- **Get started checklist (2026-11-10)** — no migration, nothing stored.
+  `GET /api/projects/{id}/getting-started` (in `app/api/onboarding.py`; viewer;
+  project-scoped keys honoured; typed `GettingStarted`) answers each step from
+  the data that step creates: `test` (a case exists — an empty suite is not
+  one), `run` (a counted run; validation runs don't count), `passed`,
+  `schedule`, and `team` (another member or a pending invitation) — `team` is
+  listed only for callers with `workspace:manage_users`, so nobody else learns
+  the workspace's head count. UI: `components/onboarding/` (`GettingStarted`
+  card on Overview, wording + destinations in `steps.ts`, vitest); hidden when
+  complete or dismissed per project in localStorage. Guide: Today → Overview →
+  "Get started"; its picture comes from the docs account's EMPTY "My first
+  project" (the demo project is complete, so the card never shows there).
+  Known and not fixed here: Overview's tiles count runs of ALL projects while
+  the card is per project; the main Overview capture currently fails because
+  the aged demo data leaves the 14-day chart empty.
 - **Invitation emails (2026-11-10)** — no migration. `app/services/invite_email.py`:
   a workspace invitation now emails the invitee (`/signup?token=…`, built from
   `FRONTEND_BASE_URL`) and an existing user who is added directly gets an
