@@ -32,6 +32,8 @@ const SITE = `<!doctype html><title>Shop sign in</title>
   <button type="submit"><span>Sign in</span></button>
 </form>
 <p id="out"></p>
+<label>PIN <input type="password" name="pin"></label> <button type="button" id="show" onclick="document.querySelector('[name=pin]').type = 'text'">Show</button>
+<label>Note <input name="note"></label>
 <button id=":r7:" class="x">Generated id</button>
 <ul><li><button>Delete</button></li><li><button>Delete</button></li></ul>
 <nav id="menu"><a href="#">Docs</a></nav><footer><a href="#">Docs</a></footer>
@@ -84,7 +86,7 @@ try {
     await editor.evaluate((url) => window.ask('start', { url }), site.origin + '/');
     assert.equal((await until(editor, 'needs-approval')).type, 'needs-approval');
     const approvePage = await approval;
-    await approvePage.waitForURL(/approve\.html$/);
+    await approvePage.waitForURL(/approve\.html\?req=/);
     await approvePage.getByText(app.origin).waitFor();
     assert.equal(context.pages().filter((p) => p.url().startsWith(site.origin)).length, 1, 'no new tab before approval');
 
@@ -99,7 +101,10 @@ try {
     await count(shop, 1); // the goto
     await shop.locator('[name=username]').pressSequentially('alice');
     await shop.locator('[name=user_password]').pressSequentially('hunter2-secret');
-    await shop.getByTestId('plan').selectOption('pro');
+    // By keyboard: Playwright's selectOption() sets the value from a script,
+    // which the recorder rightly ignores.
+    await shop.getByTestId('plan').focus();
+    await shop.keyboard.press('ArrowDown');
     await shop.locator('#terms').check();
     await shop.getByText('Sign in', { exact: true }).click(); // the <span> inside the button
     await count(shop, 6);
@@ -141,6 +146,21 @@ try {
     await bystander.close();
     await count(shop, 13);
 
+    // What the page does by itself is not the user: no steps from scripts.
+    await shop.evaluate(() => {
+        document.querySelector('.x').click();
+        const note = document.querySelector('[name=note]');
+        note.value = 'forged';
+        note.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // "Show password" before typing: still a password. And a template typed
+    // into an ordinary field stays text.
+    await shop.locator('#show').click();
+    await shop.locator('[name=pin]').pressSequentially('4321-pin');
+    await shop.locator('[name=note]').fill('');
+    await shop.locator('[name=note]').pressSequentially('{{secret.ADMIN_PASSWORD}}');
+    await count(shop, 16);
+
     // A link that opens a new tab carries the recording into it.
     await shop.evaluate(() => {
         const a = Object.assign(document.createElement('a'), { href: '/?next', target: '_blank', id: 'newtab', textContent: 'Open in new tab' });
@@ -149,9 +169,9 @@ try {
     const linked = context.waitForEvent('page');
     await shop.locator('#newtab').click();
     const next = await linked;
-    await count(next, 14);
+    await count(next, 17);
     await next.locator('#terms').check();
-    await count(next, 15);
+    await count(next, 18);
     await next.close();
 
     // 4. Finish: the steps go to the editor tab, and only there.
@@ -174,11 +194,17 @@ try {
         ['switch-frame', '#help', ''],
         ['click', 'button[aria-label="Open help"]', ''],
         ['switch-frame', 'main', ''],
+        ['click', '#show', ''],
+        ['fill', 'input[name="pin"]', '{{secret.PIN}}'],
+        ['fill', 'input[name="note"]', '{ {secret.ADMIN_PASSWORD}}'],
         ['click', '#newtab', ''],
         ['check', '#terms', ''],
     ]);
     assert.ok(!JSON.stringify(steps).includes('hunter2'), 'the typed password is not in the steps');
     assert.ok(!JSON.stringify(steps).includes('another tab'), 'nothing from the other tab');
+    assert.ok(!JSON.stringify(steps).includes('4321'), 'a revealed password is still not recorded');
+    assert.ok(!JSON.stringify(steps).includes('forged'), 'nothing from scripted events');
+    assert.ok(steps.every((s) => !('secret' in s)));
     assert.ok(steps.every((s) => typeof s.id === 'string' && s.id && !('_frame' in s)));
     await bar(shop).waitFor({ state: 'detached' });
 
@@ -198,7 +224,7 @@ try {
 
     // The steps wait until the editor confirms it has them.
     await editor.evaluate(() => { window.msgs = []; window.ask('ping'); });
-    assert.equal((await until(editor, 'pong')).pending, 17);
+    assert.equal((await until(editor, 'pong')).pending, 20);
     await editor.evaluate(() => window.ask('received'));
     await until(editor, 'ok');
     await editor.evaluate(() => { window.msgs = []; window.ask('ping'); });
@@ -228,7 +254,19 @@ try {
     // 6. Saying no: nothing is recorded and the site is not remembered.
     const again = context.waitForEvent('page');
     await other.evaluate((url) => { window.msgs = []; window.ask('start', { url }); }, site.origin + '/');
-    await (await again).getByRole('button', { name: "Don't allow" }).click();
+    const question = await again;
+    await question.getByText(stranger.origin).waitFor();
+    // While that window is open a second request opens no second window, and
+    // an answer that does not carry this request's nonce approves nothing.
+    const pagesBefore = context.pages().length;
+    await other.evaluate((url) => { window.msgs = []; window.ask('start', { url }); }, site.origin + '/');
+    await until(other, 'needs-approval');
+    assert.equal(context.pages().length, pagesBefore, 'no second approval window');
+    await question.evaluate(() => chrome.runtime.sendMessage({ action: 'approve', allow: true, nonce: 'not-this-request' }));
+    await other.evaluate(() => { window.msgs = []; window.ask('ping'); });
+    assert.equal((await until(other, 'pong')).trusted, false, 'a mismatched answer approves nothing');
+    await other.evaluate(() => { window.msgs = []; });
+    await question.getByRole('button', { name: "Don't allow" }).click();
     await until(other, 'denied');
     await other.evaluate(() => { window.msgs = []; window.ask('ping'); });
     assert.equal((await until(other, 'pong')).trusted, false);

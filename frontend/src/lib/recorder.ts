@@ -29,6 +29,14 @@ export const MAX_RECORDED_STEPS = 500;
 const text = (v: unknown, max: number): string | undefined =>
     typeof v === 'string' && v.length > 0 ? v.slice(0, max) : undefined;
 
+// The worker fills in "{{...}}" when a test runs, including stored secrets.
+// Recorded text comes from a web page, so it must stay text: the only template
+// accepted is the recorder's own placeholder for a password field, as the
+// whole value of a fill step. The extension applies the same rule; this is
+// the second check.
+const SECRET_PLACEHOLDER = /^\{\{secret\.[A-Z][A-Z0-9_]{0,39}\}\}$/;
+const literal = (v: string | undefined): string | undefined => v?.replace(/\{\{/g, '{ {');
+
 /** Rebuilds recorded steps field by field, with fresh ids. */
 export function cleanRecordedSteps(raw: unknown): RecordedStep[] {
     if (!Array.isArray(raw)) return [];
@@ -37,12 +45,13 @@ export function cleanRecordedSteps(raw: unknown): RecordedStep[] {
         if (!item || typeof item !== 'object') continue;
         const s = item as Record<string, unknown>;
         if (typeof s.type !== 'string' || !RECORDABLE.has(s.type)) continue;
-        const intent = text(s.intent, 200);
+        const intent = literal(text(s.intent, 200));
+        const value = text(s.value, 2000);
         out.push({
             id: newId(),
             type: s.type as TestStep['type'],
-            selector: text(s.selector, 1000) ?? '',
-            value: text(s.value, 2000) ?? '',
+            selector: literal(text(s.selector, 1000)) ?? '',
+            value: (s.type === 'fill' && value && SECRET_PLACEHOLDER.test(value) ? value : literal(value)) ?? '',
             ...(intent ? { intent } : {}),
         });
     }

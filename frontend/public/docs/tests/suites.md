@@ -226,6 +226,7 @@ Ends the recording and sends the steps to the step editor.
 *What the recording above produced. The password step holds a placeholder, not the password.*
 
 - **Passwords are never recorded.** What you type into a password field becomes a placeholder such as `{{secret.PASSWORD}}` (named after the field). Store the real password under that name in *Tests → Environments* before you run the test; a message in the editor tells you which names are needed.
+- **Placeholders are added afterwards, in the editor.** Anything you type while recording is kept as plain text, so typing `{{env.USER}}` into a field records those characters with a space between the opening brackets, not a placeholder. Put placeholders in once the steps are in the editor.
 - **The first step is the full address** you started on. To run the same test on another site (test and live), change its beginning to `{{env.BASE_URL}}`.
 - **What is recorded:** clicks, typing, choices in drop-down lists, ticking and unticking boxes, dragging one thing onto another, Enter in a field and Escape. To record pointing at something without clicking (a menu that opens on hover), point at it and press Ctrl+Shift+H.
 - **What is not recorded:** choosing a file to upload, right-clicks, the browser's own pop-up questions, and anything inside a part of the page that comes from another website (an embedded payment form, for example). A double-click is recorded as two clicks. Add or correct these steps by hand afterwards.

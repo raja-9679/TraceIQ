@@ -187,11 +187,21 @@
         return name && /^[A-Z]/.test(name) ? name.slice(0, 40) : 'PASSWORD';
     }
 
+    // A field is secret for the whole recording once it has been a password
+    // field: a "show password" button turns it into type=text, and what is
+    // typed after that is still the password. content.js adds to this set when
+    // it sees a type change away from "password".
+    const everPassword = new WeakSet();
+    const SECRET_AUTOCOMPLETE = /\b(current-password|new-password|one-time-code)\b/i;
+
+    function isSecretField(el) {
+        if (!(el instanceof HTMLInputElement)) return false;
+        if (el.type === 'password' || SECRET_AUTOCOMPLETE.test(el.getAttribute('autocomplete') || '')) everPassword.add(el);
+        return everPassword.has(el);
+    }
+
     function fillValue(el) {
-        if (el instanceof HTMLInputElement && el.type === 'password') {
-            return `{{secret.${secretNameFor(el)}}}`;
-        }
-        return el.value;
+        return isSecretField(el) ? `{{secret.${secretNameFor(el)}}}` : el.value;
     }
 
     // expect-url goes to Playwright's waitForURL, which takes a glob. Host and
@@ -201,6 +211,6 @@
     }
 
     globalThis.__traceiqRecorder = {
-        newId, selectorFor, intentFor, clickTarget, isTextField, fillValue, urlPattern, textOf,
+        newId, selectorFor, intentFor, clickTarget, isTextField, fillValue, isSecretField, everPassword, urlPattern, textOf,
     };
 })();

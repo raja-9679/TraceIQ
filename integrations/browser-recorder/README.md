@@ -22,8 +22,19 @@ TraceIQ test editor  --window.postMessage-->  content.js  --runtime message-->  
   answer is stored in `chrome.storage.local` (`tiq_trusted`). The origin comes
   from the `sender` the browser reports, never from the message. The popup
   lists the approved origins with *Remove*.
-- **Passwords never leave the page.** A `type=password` field is recorded as
+- **Passwords never leave the page.** A password field is recorded as
   `{{secret.<FIELD NAME>}}`; the editor tells the user which secrets to store.
+  A field counts as a password for the whole recording once it has been
+  `type=password` (a "show password" button changes the type) or carries
+  `autocomplete=current-password|new-password|one-time-code`.
+- **The recorded page cannot write steps.** Events its scripts dispatch
+  (`isTrusted` false) are ignored, and recorded text never becomes a template:
+  `{{` from the page is stored as `{ {`, so a page cannot plant
+  `{{secret.X}}` in a visible field for a later run to fill with the real
+  secret. The only template is the recorder's own password placeholder
+  (`background.js:safeStep`, repeated in `lib/recorder.ts`).
+- **An approval answers one request.** Each approval window carries its
+  request's nonce; a second request cannot replace one whose window is open.
 - **Only the tab the recorder opened is recorded**, plus tabs a link in it
   opens (`state.tabs`; a tab the user opens by hand starts on the browser's
   new-tab page and is left out). Steps from any other tab are refused by the

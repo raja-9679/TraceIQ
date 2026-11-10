@@ -1732,7 +1732,12 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   everything from the browser-reported `sender` origin: an origin must be
   approved once (`approve.html`, stored in `chrome.storage.local`) before it can
   start a recording, because steps contain what the user typed. Password fields
-  are recorded as `{{secret.<FIELD>}}`, never the value. Only the tab the
+  are recorded as `{{secret.<FIELD>}}`, never the value (a field stays secret
+  after a "show password" toggle changes its type). The recorded page is
+  untrusted: script-made events (`isTrusted` false) are ignored and `{{` in
+  recorded text is stored as `{ {`, so a page cannot plant a `{{secret.X}}`
+  template for a later run to fill (`safeStep` in background.js, repeated in
+  `lib/recorder.ts`); approvals are bound to their request by a nonce. Only the tab the
   recorder opened (and tabs a link in it opens) is recorded — never the user's
   other tabs — and steps are posted back only while the editor tab is still on
   the origin that asked. The editor rebuilds

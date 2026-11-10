@@ -30,6 +30,26 @@ describe('cleanRecordedSteps', () => {
         expect(out[0].selector).toHaveLength(1000);
     });
 
+    it('keeps recorded text from becoming a template, except the password placeholder', () => {
+        const out = cleanRecordedSteps([
+            { type: 'fill', selector: '#p', value: '{{secret.USER_PASSWORD}}' },
+            { type: 'fill', selector: '#note', value: 'pay {{secret.ADMIN_PASSWORD}} now' },
+            { type: 'fill', selector: '#note', value: '{{env.BASE_URL}}' },
+            { type: 'goto', value: 'https://x.example/?q={{secret.API_KEY}}' },
+            { type: 'expect-text', selector: '[title="{{secret.X}}"]', value: '{{secret.X}}', intent: '{{secret.X}}' },
+        ]);
+        expect(out.map((s) => s.value)).toEqual([
+            '{{secret.USER_PASSWORD}}',
+            'pay { {secret.ADMIN_PASSWORD}} now',
+            '{ {env.BASE_URL}}',
+            'https://x.example/?q={ {secret.API_KEY}}',
+            '{ {secret.X}}',
+        ]);
+        expect(out[4].selector).toBe('[title="{ {secret.X}}"]');
+        expect(out[4].intent).toBe('{ {secret.X}}');
+        expect(secretsNeeded(out)).toEqual(['USER_PASSWORD']);
+    });
+
     it('returns nothing for a non-list', () => {
         expect(cleanRecordedSteps({ type: 'click' })).toEqual([]);
         expect(cleanRecordedSteps(undefined)).toEqual([]);

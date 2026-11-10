@@ -95,6 +95,17 @@
     }
 
     const inToolbar = (ev) => !!toolbarHost && ev.composedPath().includes(toolbarHost);
+    // Events made by the page's own scripts (dispatchEvent, el.click()) are
+    // not the user: a recorded page must not be able to write steps.
+    const fromUser = (ev) => ev.isTrusted === true;
+
+    // Remember every field that stops being a password field ("show
+    // password"), including ones the user has not touched yet.
+    new MutationObserver((records) => {
+        for (const r of records) {
+            if (r.oldValue === 'password' && r.target instanceof HTMLInputElement) R.everPassword.add(r.target);
+        }
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['type'], attributeOldValue: true });
     const elementOf = (ev) => (ev.target instanceof Element ? ev.target : null);
 
     // -- picking an element for a check ("Add check" on the toolbar) --------
@@ -145,7 +156,7 @@
     let enterAt = 0; // Enter in a field also "clicks" the form's submit button
 
     document.addEventListener('click', (ev) => {
-        if (inToolbar(ev)) return;
+        if (inToolbar(ev) || !fromUser(ev)) return;
         const raw = elementOf(ev);
         if (!raw) return;
         if (picking()) {
@@ -171,7 +182,7 @@
 
     // -- selects, checkboxes, radios, sliders -------------------------------
     document.addEventListener('change', (ev) => {
-        if (!active() || inToolbar(ev)) return;
+        if (!active() || inToolbar(ev) || !fromUser(ev)) return;
         const el = ev.target;
         if (el instanceof HTMLSelectElement) {
             record('select-option', { selector: R.selectorFor(el), value: el.value, intent: `Select "${el.value}" in ${R.intentFor(el)}` });
@@ -184,7 +195,7 @@
 
     // -- typing ---------------------------------------------------------------
     document.addEventListener('input', (ev) => {
-        if (!active() || inToolbar(ev)) return;
+        if (!active() || inToolbar(ev) || !fromUser(ev)) return;
         const el = ev.target;
         if (!R.isTextField(el)) return;
         const value = R.fillValue(el);
@@ -192,18 +203,21 @@
             send({ action: 'update-step', id: lastFill.id, value });
             return;
         }
-        const step = record('fill', { selector: R.selectorFor(el), value, intent: R.intentFor(el) });
+        const step = record('fill', {
+            selector: R.selectorFor(el), value, intent: R.intentFor(el),
+            ...(R.isSecretField(el) ? { secret: true } : {}),
+        });
         lastFill = { el, id: step.id };
     }, true);
 
     // -- drag and drop (HTML5) ----------------------------------------------
     let dragSource = null;
     document.addEventListener('dragstart', (ev) => {
-        if (active()) dragSource = elementOf(ev);
+        if (active() && fromUser(ev)) dragSource = elementOf(ev);
     }, true);
     document.addEventListener('drop', (ev) => {
         const target = elementOf(ev);
-        if (!active() || !dragSource || !target) return;
+        if (!active() || !fromUser(ev) || !dragSource || !target) return;
         record('drag-and-drop', {
             selector: R.selectorFor(dragSource),
             value: R.selectorFor(target),
@@ -219,7 +233,7 @@
     document.addEventListener('mouseover', (ev) => { lastHover = elementOf(ev); }, true);
 
     document.addEventListener('keydown', (ev) => {
-        if (!active() || inToolbar(ev)) return;
+        if (!active() || inToolbar(ev) || !fromUser(ev)) return;
         if (ev.key === 'Escape' && state.mode) {
             send({ action: 'set-mode', mode: null });
             ev.preventDefault();

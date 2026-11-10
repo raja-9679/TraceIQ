@@ -15,9 +15,6 @@ const MAX_STEPS = 500;
 // A page load this soon after a recorded action was caused by it (a link, a
 // form submit), so it is not a step of its own.
 const NAV_QUIET_MS = 5000;
-// An unanswered approval window blocks a second one for this long (closing it
-// counts as "no" and clears it sooner).
-const APPROVAL_WAIT_MS = 60000;
 
 const EMPTY = {
     recording: false, paused: false, mode: null, steps: [],
@@ -91,15 +88,36 @@ function weaveFrameSwitches(steps) {
             });
             current = frame;
         }
-        const { _frame, ...clean } = step;
+        const { _frame, secret, ...clean } = step;
         out.push(clean);
     }
     return out;
 }
 
+// "{{...}}" is filled in by the worker when the test runs — with environment
+// values and, for {{secret.X}}, with stored secrets. Text that merely came
+// from the recorded page must never become such a template: a page could put
+// "{{secret.ADMIN_PASSWORD}}" in a visible field and have a later run type the
+// real secret into it. The one template the recorder writes itself is the
+// placeholder for a password field (`secret: true`, set by the content script,
+// which the page cannot reach).
+const SECRET_PLACEHOLDER = /^\{\{secret\.[A-Z][A-Z0-9_]{0,39}\}\}$/;
+const literal = (v) => (typeof v === 'string' ? v.replace(/\{\{/g, '{ {') : v);
+
+function safeStep(step) {
+    const ownSecret = step.type === 'fill' && step.secret === true && SECRET_PLACEHOLDER.test(step.value || '');
+    return {
+        ...step,
+        selector: literal(step.selector),
+        value: ownSecret ? step.value : literal(step.value),
+        intent: literal(step.intent),
+        _frame: literal(step._frame),
+    };
+}
+
 function addStep(state, step) {
     if (!state.recording || state.paused || state.steps.length >= MAX_STEPS) return;
-    state.steps.push(step);
+    state.steps.push(safeStep(step));
     state.lastStepAt = Date.now();
 }
 
@@ -184,11 +202,19 @@ async function fromPage(msg, sender) {
                 await begin(state, { origin, tabId, url });
                 return { type: 'starting' };
             }
-            // One question at a time: a page must not be able to stack
-            // approval windows until one is clicked by mistake.
-            if (state.request && Date.now() - state.request.at < APPROVAL_WAIT_MS) return { type: 'needs-approval' };
-            state.request = { origin, tabId, url, at: Date.now() };
-            await chrome.windows.create({ url: chrome.runtime.getURL('approve.html'), type: 'popup', width: 460, height: 380 });
+            // One question at a time, and a question is never swapped for
+            // another while its window is open: the window shows one origin,
+            // and "Allow" must mean that origin. Each window carries the nonce
+            // of its own request, checked again when it answers.
+            if (state.request) {
+                const open = await chrome.windows.get(state.request.windowId).catch(() => null);
+                if (open) return { type: 'needs-approval' };
+            }
+            const nonce = crypto.randomUUID();
+            const win = await chrome.windows.create({
+                url: chrome.runtime.getURL(`approve.html?req=${nonce}`), type: 'popup', width: 460, height: 380,
+            });
+            state.request = { origin, tabId, url, nonce, windowId: win.id };
             return { type: 'needs-approval' };
         });
     }
@@ -226,9 +252,12 @@ const handlers = {
         if (sender.tab && state.tabs.includes(sender.tab.id)) addStep(state, msg.step);
     }),
 
-    'update-step': (msg) => mutate((state) => {
+    'update-step': (msg, sender) => mutate((state) => {
         const last = state.steps[state.steps.length - 1];
-        if (state.recording && !state.paused && last && last.id === msg.id) last.value = msg.value;
+        if (!state.recording || state.paused || !last || last.id !== msg.id) return;
+        if (!sender.tab || !state.tabs.includes(sender.tab.id)) return;
+        // A password step keeps its placeholder whatever is typed next.
+        if (last.secret !== true) last.value = literal(msg.value);
     }),
 
     // Only the first page, or one the user went to by hand, becomes a step.
@@ -253,11 +282,15 @@ const handlers = {
     }),
 
     // approve.html and popup.html (extension pages only — see the guard below)
-    'approval-info': async () => (await load()).request,
+    'approval-info': async (msg) => {
+        const { request } = await load();
+        return request && request.nonce === msg.nonce ? { origin: request.origin } : null;
+    },
     approve: (msg) => mutate(async (state) => {
         const request = state.request;
+        // An answer counts only for the request its window was opened for.
+        if (!request || typeof msg.nonce !== 'string' || request.nonce !== msg.nonce) return;
         state.request = null;
-        if (!request) return;
         if (!msg.allow) return toApp(request.tabId, request.origin, { type: 'denied' });
         const list = await trusted();
         if (!list.includes(request.origin)) await chrome.storage.local.set({ tiq_trusted: [...list, request.origin] });

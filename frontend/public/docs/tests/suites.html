@@ -316,6 +316,10 @@
             becomes a placeholder such as <code>{{secret.PASSWORD}}</code> (named after the field).
             Store the real password under that name in <em>Tests → Environments</em> before you run
             the test; a message in the editor tells you which names are needed.</li>
+          <li><strong>Placeholders are added afterwards, in the editor.</strong> Anything you type
+            while recording is kept as plain text, so typing <code>{{env.USER}}</code> into a field
+            records those characters with a space between the opening brackets, not a placeholder.
+            Put placeholders in once the steps are in the editor.</li>
           <li><strong>The first step is the full address</strong> you started on. To run the same test
             on another site (test and live), change its beginning to <code>{{env.BASE_URL}}</code>.</li>
           <li><strong>What is recorded:</strong> clicks, typing, choices in drop-down lists, ticking
