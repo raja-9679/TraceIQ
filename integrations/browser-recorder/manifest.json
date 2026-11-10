@@ -1,21 +1,21 @@
 {
   "manifest_version": 3,
   "name": "TraceIQ Recorder",
-  "version": "0.1.0",
-  "description": "Record user journeys in any SaaS app and push them as TraceIQ test cases.",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "version": "0.2.0",
+  "description": "Record a journey in your web app and send the steps to the TraceIQ test editor. No API key; passwords are never recorded.",
+  "permissions": ["storage", "scripting"],
   "host_permissions": ["<all_urls>"],
+  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "TraceIQ Recorder"
+    "default_title": "TraceIQ Recorder",
+    "default_icon": { "16": "icons/16.png", "48": "icons/48.png" }
   },
-  "background": {
-    "service_worker": "background.js"
-  },
+  "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["selectors.js", "content.js"],
       "run_at": "document_start",
       "all_frames": true
     }

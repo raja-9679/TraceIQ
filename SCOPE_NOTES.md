@@ -157,7 +157,7 @@ These items either require significant frontend work, external products, or desi
 ### Phase C polish
 - **Coverage gap detection** — partially shipped via Phase D's `impact-analysis` endpoint (returns unmatched files). The "auto-draft a test for unmatched files" pipeline is open: an agent must explicitly call `generate_case_proposal` on each unmatched file. Possible next step: a server-side "auto-propose for every unmatched file" mode.
 - **Continuous prod validation** — already possible via the cron `TestSchedule` model + a `target_url`-bearing comparison run; needs a UI to set up the recurring schedule.
-- **Recorder fidelity** — drag-drop, iframe interactions, hover-only flows, network capture. Today's recorder is goto/click/fill/press-key only.
+- **Recorder** — rebuilt 2026-11-10 (started from the test editor, no API key, checks, password placeholders; see `integrations/browser-recorder/README.md`). Still open: Chrome Web Store listing (owner's developer account), file uploads, native dialogs, cross-origin iframes, contenteditable editors, network capture, a Firefox build.
 
 ### Local development bridge — prerequisite for SaaS commercial use
 

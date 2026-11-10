@@ -152,7 +152,7 @@ The test's steps in plain words, in the order they run. The grey label says what
 
 A test is a list of **steps**. Each step is one thing a person would do or check in the browser. **Edit steps** (or *New test*) opens the step editor:
 
-![The step editor for the test Add a todo. At the top: Back / Edit Test Case, the title Add a todo with 7 steps, the buttons History, Cancel and Update Test, and below them Dataset and Matrix. A Test details box with the name, Priority set to High, Auth setup case unticked and Use auth session ticked. An Ownership and review box (owner Maya Rao, backup Li Chen, reviewed). The Execution Timeline with the steps Navigate {{env.BASE_URL}}/login, Fill Input #login-username alice and Fill Input #login-password {{secret.ALICE_PASSWORD}}. Pinned to the bottom of the screen, a white bar with a dark Step button and Navigate, Click, Fill, Assert, API, AMP and Script](../media/tests/suites/editor.png)
+![The step editor for the test Add a todo. At the top: Back / Edit Test Case, the title Add a todo with 7 steps, the buttons History, Cancel and Update Test, and below them Dataset and Matrix. A Test details box with the name, Priority set to High, Auth setup case unticked and Use auth session ticked. An Ownership and review box (owner Maya Rao, backup Li Chen, reviewed). The Execution Timeline with the steps Navigate {{env.BASE_URL}}/login, Fill Input #login-username alice and Fill Input #login-password {{secret.ALICE_PASSWORD}}. Pinned to the bottom of the screen, a white bar with a dark Step button, then Record, Navigate, Click, Fill, Assert, API, AMP and Script](../media/tests/suites/editor.png)
 
 From the top: the test's name as the heading with *Back* above it and **History**, **Cancel** and **Update Test** beside it (on a wide screen this strip stays in view as you scroll, so you can always save); **Dataset** and **Matrix** under it; a **Test details** box with the name, the priority and the sign-in choices; the **Ownership and review** box; and the **Execution Timeline**, the numbered list of steps. A new test (*New Test Case*) has no History and no Ownership and review box until it is saved, and its button is **Save Test**. Once you change something, an *Unsaved changes* label appears next to the name.
 
@@ -174,12 +174,65 @@ What to type, which address to open, or what text to expect.
 >
 > A value such as `{{env.BASE_URL}}` is filled in when the test runs, from the environment it runs in, so the same test works on a test site and the live site. `{{secret.ALICE_PASSWORD}}` is a password kept encrypted in the project's environments: the test never contains the password itself. On the suite page, typed values are shown as "a value" unless they are a placeholder, so passwords typed straight into a step are not displayed.
 
-- **The add-step bar**, the white bar that stays at the bottom of the screen while you scroll through the steps, adds a step at the end: the dark *Step* button (choose the action yourself), or a shortcut for the common ones (*Navigate*, *Click*, *Fill*, *Assert*, *API*, *AMP*, *Script*). Under each step, *Up*, *Down*, *Add below* and *Delete* rearrange the list.
+- **The add-step bar**, the white bar that stays at the bottom of the screen while you scroll through the steps, adds a step at the end: the dark *Step* button (choose the action yourself), or a shortcut for the common ones (*Navigate*, *Click*, *Fill*, *Assert*, *API*, *AMP*, *Script*). *Record*, next to *Step*, writes the steps for you while you use your site (see [Recording a test](#record)). Under each step, *Up*, *Down*, *Add below* and *Delete* rearrange the list.
 - **Dataset** runs the test once for every row of a small table of values, and **Matrix** picks browsers and devices for this test only. Each opens its own box above the Execution Timeline (already open when the test has one); a tick after the name (*Dataset ✓*) means one is set.
 - **Priority** (None, Critical, High, Medium, Low): critical tests count for release readiness and the quality gate's critical-test rule.
 - **Auth setup case** marks a test that signs in: when it passes, other tests can start already signed in (*Use auth session*).
 - **History** shows earlier versions of the test and can bring one back.
 - **Ownership and review** names who looks after the test (see *Test review*).
+
+### Recording a test
+
+Instead of adding steps one at a time, you can use your site the way a visitor would and let TraceIQ write the steps down. This needs the **TraceIQ Recorder**, a small add-on for Chrome, Edge and other Chromium browsers on a computer. The recorded steps are added to the test you have open, for you to check; nothing is saved until you save the test.
+
+![The Record steps box: a short explanation, the field Page to start on filled with https://todo.example.com/login, three notes (use Add check on the bar, passwords are never recorded and become a placeholder such as {{secret.PASSWORD}}, press Finish on the bar to come back), and a dark Start recording button](../media/tests/suites/recorder-dialog.png)
+
+1. In the step editor, press **Record** on the bar at the bottom.
+2. **The first time on this computer** the box says the recorder is not installed. Follow the steps it lists: *Download the recorder* and unzip it, open `chrome://extensions`, turn on *Developer mode*, press *Load unpacked* and choose the unzipped folder. Then press **Check again**.
+3. Type the address of the page to begin on in **Page to start on** and press **Start recording**.
+4. **The first time**, the recorder opens a small window asking whether this TraceIQ may use it. Choose **Allow and start recording**. You are asked once for each TraceIQ address.
+5. Your page opens in a new tab. Use it as usual: click, type, choose from lists, tick boxes. A small bar at the bottom right counts the steps.
+6. Press **Finish** on the bar. You are brought back to the step editor with the recorded steps added after any steps the test already had.
+7. Read the steps through, change what you like, then press **Save Test**.
+
+![The recorder's question Let this site use the recorder? with the address of the TraceIQ that asked, a note that the site will receive the pages you open, what you click and what you type but never passwords, and the buttons Allow and start recording and Don't allow](../media/tests/suites/recorder-allow.png)
+
+*Asked once. The address shown is your TraceIQ's own address; in this picture it is the one used to make the guide.*
+
+![A sample sign-in page being recorded: user name alice, a hidden password, a Sign in button and the text Welcome back, alice. At the bottom right the recorder bar reads Recording · 4 steps, with the buttons Add check, Pause, Undo last step and a dark Finish](../media/tests/suites/recorder-bar.png)
+
+The bar has four buttons:
+
+Add check
+
+Makes the test confirm something, so that it fails when the page is not as expected. Choose *Element is visible* or *Text is shown* and then click the element or the text (the page does not react to that click), or *Page address* or *Page title* to check the page you are on. A test with no check only proves that nothing crashed, so add at least one.
+
+Pause / Resume
+
+While paused, nothing you do is recorded.
+
+Undo last step
+
+Removes the newest step, for a click you did not mean.
+
+Finish
+
+Ends the recording and sends the steps to the step editor.
+
+![The recorder bar after pressing Add check: Recording · 4 steps, then Element is visible, Text is shown, Page address, Page title and Back, and the line A check makes the test fail when the page is not as expected](../media/tests/suites/recorder-checks.png)
+
+![The Execution Timeline after recording, with five steps: Navigate https://todo.example.com/login, Fill Input #login-username alice, Fill Input #login-password {{secret.PASSWORD}}, Click #login-submit, and Expect Text #welcome Welcome back, alice](../media/tests/suites/recorder-result.png)
+
+*What the recording above produced. The password step holds a placeholder, not the password.*
+
+- **Passwords are never recorded.** What you type into a password field becomes a placeholder such as `{{secret.PASSWORD}}` (named after the field). Store the real password under that name in *Tests → Environments* before you run the test; a message in the editor tells you which names are needed.
+- **The first step is the full address** you started on. To run the same test on another site (test and live), change its beginning to `{{env.BASE_URL}}`.
+- **What is recorded:** clicks, typing, choices in drop-down lists, ticking and unticking boxes, dragging one thing onto another, Enter in a field and Escape. To record pointing at something without clicking (a menu that opens on hover), point at it and press Ctrl+Shift+H.
+- **What is not recorded:** choosing a file to upload, right-clicks, the browser's own pop-up questions, and anything inside a part of the page that comes from another website (an embedded payment form, for example). A double-click is recorded as two clicks. Add or correct these steps by hand afterwards.
+- **Only the new tab is recorded**, together with any tab that a link in it opens. Other tabs you have open are left alone, and the recorder bar is always on screen in a tab that is being recorded.
+- **The recorder cannot save anything itself.** It holds no password or key for TraceIQ: it only hands the steps to the step editor that started it, and what you may save is decided by your own role, as always.
+- **If you closed the editor's tab** before pressing Finish, the steps are kept. Open any test, press **Record**, and choose *Add them to this test*. The recorder's own menu (its icon in the browser's toolbar) also shows them, and lists the TraceIQ addresses you have allowed, each with *Remove*.
+- Only one recording can run at a time. *Discard this recording* in the box, or *Discard recording* in the recorder's menu, throws the current one away.
 
 ### Using one test inside another
 
@@ -207,6 +260,13 @@ Nothing is saved until you press **Save Test** (or **Update Test** for an existi
 1. Make sure the right project is selected at the top of the sidebar.
 2. Click the suite to open it, and choose the environment to test in the **environment** menu.
 3. Press **Run suite**. TraceIQ opens *Runs*; the new run appears at the top and fills in as tests finish.
+
+### …record a test instead of writing it
+
+1. Open the suite it belongs in and press **New test**, and give the test a name.
+2. Press **Record** on the bar at the bottom, type the address to start on and press **Start recording**.
+3. Do the journey in the new tab. Before finishing, press **Add check** and click a text that proves it worked.
+4. Press **Finish**, read the steps through, then **Save Test** and **Run now**.
 
 ### …write a new test
 

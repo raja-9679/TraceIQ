@@ -1721,6 +1721,35 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   (`owner_of_step`). Not in suite hooks (refused). `GET
   /api/cases/{id}/used-by`; `GET /api/cases?q=` searches names. Worker
   rebuild needed only for the clear error text and the grouping.
+- **Browser recorder (2026-11-10)** — `integrations/browser-recorder/` (MV3,
+  v0.2.0; README there). No backend change and **no API key**: "Record" in the
+  test editor (`components/test-builder/RecorderDialog.tsx`, protocol +
+  sanitising in `lib/recorder.ts`) talks to the extension's content script by
+  `window.postMessage` on the app's own origin; the extension records in a new
+  tab and hands the steps back to that editor tab, where they are appended as
+  UNSAVED changes — saving stays the user's own action under their role. The
+  service worker owns the step list (`chrome.storage.session`) and decides
+  everything from the browser-reported `sender` origin: an origin must be
+  approved once (`approve.html`, stored in `chrome.storage.local`) before it can
+  start a recording, because steps contain what the user typed. Password fields
+  are recorded as `{{secret.<FIELD>}}`, never the value. Only the tab the
+  recorder opened (and tabs a link in it opens) is recorded — never the user's
+  other tabs — and steps are posted back only while the editor tab is still on
+  the origin that asked. The editor rebuilds
+  each received step from a whitelist of 14 recordable types
+  (`cleanRecordedSteps`). Selectors: test id > hand-written id > name/aria-label/
+  placeholder > `text="…"` > `a[href]` > `#anchor >> text="…"` > CSS path, each
+  only if unique; `text=` is counted with Playwright's smallest-element rule
+  (`button:text-is()` does NOT match text inside a child span — the e2e replays
+  every recorded selector through Playwright). The toolbar's styles are a
+  constructed stylesheet because a recorded page's CSP blocks an inline
+  `<style>`. Tests: `integrations/browser-recorder/test/run.sh` (real Chromium
+  + extension, Docker), `lib/recorder.test.ts`. **After editing the extension
+  run `pack.py` and commit `frontend/public/recorder/traceiq-recorder.zip`**
+  (`pack.py --check`; the frontend image builds from `frontend/` only). Guide
+  pictures: `e2e/docs-capture/pages/tests-suites-recorder.spec.ts` (own
+  persistent context; sample site is a routed `todo.example.com`). Not in the
+  Chrome Web Store yet — set `VITE_RECORDER_STORE_URL` at build once listed.
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

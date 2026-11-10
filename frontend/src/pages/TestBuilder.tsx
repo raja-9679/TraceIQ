@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Save, Loader2, ArrowLeft, Link2, MousePointerClick, TextCursorInput, Code2, CheckCircle2, FileJson, Zap, Database, Monitor } from "lucide-react";
+import { Plus, Save, Loader2, ArrowLeft, Link2, MousePointerClick, TextCursorInput, Code2, CheckCircle2, FileJson, Zap, Database, Monitor, CircleDot } from "lucide-react";
 import { toast } from 'sonner';
 import { StepComponent, TestStep } from "@/components/test-builder/StepComponent";
 import { CaseHistoryDialog } from "@/components/test-builder/CaseHistoryDialog";
 import { CaseOwnershipPanel } from "@/components/ownership/CaseOwnershipPanel";
 import { UsedByNotice } from "@/components/test-builder/UsedByNotice";
+import { RecorderDialog } from "@/components/test-builder/RecorderDialog";
+import { secretsNeeded, type RecordedStep } from '@/lib/recorder';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getTestCase, updateTestCase } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -221,6 +223,24 @@ export default function TestBuilder() {
         clearDraft(draftKey);
         setIsDirty(false);
     }, [draftKey]);
+
+    // Steps from the browser recorder are appended as unsaved changes, like
+    // steps added by hand.
+    const [showRecorder, setShowRecorder] = useState(false);
+    const addRecordedSteps = useCallback((recorded: RecordedStep[]) => {
+        if (recorded.length === 0) {
+            toast.info('The recording had no steps.');
+            return;
+        }
+        setSteps((current) => [...current, ...recorded]);
+        const secrets = secretsNeeded(recorded);
+        toast.success(`${recorded.length} recorded step${recorded.length === 1 ? '' : 's'} added. Review them, then save the test.`, {
+            description: secrets.length
+                ? `Passwords were not recorded. Add ${secrets.map((n) => `secret ${n}`).join(', ')} under Tests → Environments before running.`
+                : undefined,
+            duration: secrets.length ? 12000 : 6000,
+        });
+    }, []);
 
     const addStep = (type: TestStep['type'] = 'goto') => {
         const newStep: TestStep = {
@@ -595,6 +615,9 @@ export default function TestBuilder() {
                         <Button size="sm" className="h-9 px-4 text-sm" onClick={() => addStep('' as TestStep['type'])}>
                             <Plus className="h-4 w-4" /> Step
                         </Button>
+                        <Button variant="ghost" className={addButtonClass} onClick={() => setShowRecorder(true)}>
+                            <CircleDot className="h-4 w-4" /> Record
+                        </Button>
                         <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
                         <Button variant="ghost" className={addButtonClass} onClick={() => addStep('goto')}>
                             <Link2 className="h-4 w-4" /> Navigate
@@ -622,6 +645,7 @@ export default function TestBuilder() {
                     </div>
                 </div>
             </section>
+            <RecorderDialog open={showRecorder} onOpenChange={setShowRecorder} onSteps={addRecordedSteps} />
         </motion.div>
     );
 }

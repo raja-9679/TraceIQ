@@ -229,7 +229,7 @@
           check in the browser. <strong>Edit steps</strong> (or <em>New test</em>) opens the step
           editor:</p>
         <figure>
-          <div class="frame"><img src="../media/tests/suites/editor.png" alt="The step editor for the test Add a todo. At the top: Back / Edit Test Case, the title Add a todo with 7 steps, the buttons History, Cancel and Update Test, and below them Dataset and Matrix. A Test details box with the name, Priority set to High, Auth setup case unticked and Use auth session ticked. An Ownership and review box (owner Maya Rao, backup Li Chen, reviewed). The Execution Timeline with the steps Navigate {{env.BASE_URL}}/login, Fill Input #login-username alice and Fill Input #login-password {{secret.ALICE_PASSWORD}}. Pinned to the bottom of the screen, a white bar with a dark Step button and Navigate, Click, Fill, Assert, API, AMP and Script" loading="lazy" width="1440" height="1240"></div>
+          <div class="frame"><img src="../media/tests/suites/editor.png" alt="The step editor for the test Add a todo. At the top: Back / Edit Test Case, the title Add a todo with 7 steps, the buttons History, Cancel and Update Test, and below them Dataset and Matrix. A Test details box with the name, Priority set to High, Auth setup case unticked and Use auth session ticked. An Ownership and review box (owner Maya Rao, backup Li Chen, reviewed). The Execution Timeline with the steps Navigate {{env.BASE_URL}}/login, Fill Input #login-username alice and Fill Input #login-password {{secret.ALICE_PASSWORD}}. Pinned to the bottom of the screen, a white bar with a dark Step button, then Record, Navigate, Click, Fill, Assert, API, AMP and Script" loading="lazy" width="1440" height="1240"></div>
         </figure>
         <p>From the top: the test's name as the heading with <em>Back</em> above it and
           <strong>History</strong>, <strong>Cancel</strong> and <strong>Update Test</strong> beside it
@@ -257,12 +257,87 @@
             into a step are not displayed.</p></div>
         </div>
         <ul>
-          <li><strong>The add-step bar</strong>, the white bar that stays at the bottom of the screen while you scroll through the steps, adds a step at the end: the dark <em>Step</em> button (choose the action yourself), or a shortcut for the common ones (<em>Navigate</em>, <em>Click</em>, <em>Fill</em>, <em>Assert</em>, <em>API</em>, <em>AMP</em>, <em>Script</em>). Under each step, <em>Up</em>, <em>Down</em>, <em>Add below</em> and <em>Delete</em> rearrange the list.</li>
+          <li><strong>The add-step bar</strong>, the white bar that stays at the bottom of the screen while you scroll through the steps, adds a step at the end: the dark <em>Step</em> button (choose the action yourself), or a shortcut for the common ones (<em>Navigate</em>, <em>Click</em>, <em>Fill</em>, <em>Assert</em>, <em>API</em>, <em>AMP</em>, <em>Script</em>). <em>Record</em>, next to <em>Step</em>, writes the steps for you while you use your site (see <a href="#record">Recording a test</a>). Under each step, <em>Up</em>, <em>Down</em>, <em>Add below</em> and <em>Delete</em> rearrange the list.</li>
           <li><strong>Dataset</strong> runs the test once for every row of a small table of values, and <strong>Matrix</strong> picks browsers and devices for this test only. Each opens its own box above the Execution Timeline (already open when the test has one); a tick after the name (<em>Dataset ✓</em>) means one is set.</li>
           <li><strong>Priority</strong> (None, Critical, High, Medium, Low): critical tests count for release readiness and the quality gate's critical-test rule.</li>
           <li><strong>Auth setup case</strong> marks a test that signs in: when it passes, other tests can start already signed in (<em>Use auth session</em>).</li>
           <li><strong>History</strong> shows earlier versions of the test and can bring one back.</li>
           <li><strong>Ownership and review</strong> names who looks after the test (see <em>Test review</em>).</li>
+        </ul>
+        <h3 id="record">Recording a test</h3>
+        <p>Instead of adding steps one at a time, you can use your site the way a visitor would and
+          let TraceIQ write the steps down. This needs the <strong>TraceIQ Recorder</strong>, a small
+          add-on for Chrome, Edge and other Chromium browsers on a computer. The recorded steps are
+          added to the test you have open, for you to check; nothing is saved until you save the
+          test.</p>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/recorder-dialog.png" alt="The Record steps box: a short explanation, the field Page to start on filled with https://todo.example.com/login, three notes (use Add check on the bar, passwords are never recorded and become a placeholder such as {{secret.PASSWORD}}, press Finish on the bar to come back), and a dark Start recording button" loading="lazy"></div>
+        </figure>
+        <ol class="steps">
+          <li>In the step editor, press <strong>Record</strong> on the bar at the bottom.</li>
+          <li><strong>The first time on this computer</strong> the box says the recorder is not
+            installed. Follow the steps it lists: <em>Download the recorder</em> and unzip it, open
+            <code>chrome://extensions</code>, turn on <em>Developer mode</em>, press <em>Load
+            unpacked</em> and choose the unzipped folder. Then press <strong>Check again</strong>.</li>
+          <li>Type the address of the page to begin on in <strong>Page to start on</strong> and press
+            <strong>Start recording</strong>.</li>
+          <li><strong>The first time</strong>, the recorder opens a small window asking whether this
+            TraceIQ may use it. Choose <strong>Allow and start recording</strong>. You are asked once
+            for each TraceIQ address.</li>
+          <li>Your page opens in a new tab. Use it as usual: click, type, choose from lists, tick
+            boxes. A small bar at the bottom right counts the steps.</li>
+          <li>Press <strong>Finish</strong> on the bar. You are brought back to the step editor with
+            the recorded steps added after any steps the test already had.</li>
+          <li>Read the steps through, change what you like, then press <strong>Save Test</strong>.</li>
+        </ol>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/recorder-allow.png" alt="The recorder's question Let this site use the recorder? with the address of the TraceIQ that asked, a note that the site will receive the pages you open, what you click and what you type but never passwords, and the buttons Allow and start recording and Don't allow" loading="lazy"></div>
+          <figcaption>Asked once. The address shown is your TraceIQ's own address; in this picture it is the one used to make the guide.</figcaption>
+        </figure>
+        <figure>
+          <div class="frame"><img src="../media/tests/suites/recorder-bar.png" alt="A sample sign-in page being recorded: user name alice, a hidden password, a Sign in button and the text Welcome back, alice. At the bottom right the recorder bar reads Recording · 4 steps, with the buttons Add check, Pause, Undo last step and a dark Finish" loading="lazy" width="900" height="560"></div>
+        </figure>
+        <p>The bar has four buttons:</p>
+        <dl class="terms">
+          <dt>Add check</dt><dd>Makes the test confirm something, so that it fails when the page is not as expected. Choose <em>Element is visible</em> or <em>Text is shown</em> and then click the element or the text (the page does not react to that click), or <em>Page address</em> or <em>Page title</em> to check the page you are on. A test with no check only proves that nothing crashed, so add at least one.</dd>
+          <dt>Pause / Resume</dt><dd>While paused, nothing you do is recorded.</dd>
+          <dt>Undo last step</dt><dd>Removes the newest step, for a click you did not mean.</dd>
+          <dt>Finish</dt><dd>Ends the recording and sends the steps to the step editor.</dd>
+        </dl>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/recorder-checks.png" alt="The recorder bar after pressing Add check: Recording · 4 steps, then Element is visible, Text is shown, Page address, Page title and Back, and the line A check makes the test fail when the page is not as expected" loading="lazy"></div>
+        </figure>
+        <figure>
+          <div class="frame"><img src="../media/tests/suites/recorder-result.png" alt="The Execution Timeline after recording, with five steps: Navigate https://todo.example.com/login, Fill Input #login-username alice, Fill Input #login-password {{secret.PASSWORD}}, Click #login-submit, and Expect Text #welcome Welcome back, alice" loading="lazy"></div>
+          <figcaption>What the recording above produced. The password step holds a placeholder, not the password.</figcaption>
+        </figure>
+        <ul>
+          <li><strong>Passwords are never recorded.</strong> What you type into a password field
+            becomes a placeholder such as <code>{{secret.PASSWORD}}</code> (named after the field).
+            Store the real password under that name in <em>Tests → Environments</em> before you run
+            the test; a message in the editor tells you which names are needed.</li>
+          <li><strong>The first step is the full address</strong> you started on. To run the same test
+            on another site (test and live), change its beginning to <code>{{env.BASE_URL}}</code>.</li>
+          <li><strong>What is recorded:</strong> clicks, typing, choices in drop-down lists, ticking
+            and unticking boxes, dragging one thing onto another, Enter in a field and Escape. To
+            record pointing at something without clicking (a menu that opens on hover), point at it
+            and press Ctrl+Shift+H.</li>
+          <li><strong>What is not recorded:</strong> choosing a file to upload, right-clicks, the
+            browser's own pop-up questions, and anything inside a part of the page that comes from
+            another website (an embedded payment form, for example). A double-click is recorded as
+            two clicks. Add or correct these steps by hand afterwards.</li>
+          <li><strong>Only the new tab is recorded</strong>, together with any tab that a link in it
+            opens. Other tabs you have open are left alone, and the recorder bar is always on
+            screen in a tab that is being recorded.</li>
+          <li><strong>The recorder cannot save anything itself.</strong> It holds no password or key
+            for TraceIQ: it only hands the steps to the step editor that started it, and what you
+            may save is decided by your own role, as always.</li>
+          <li><strong>If you closed the editor's tab</strong> before pressing Finish, the steps are
+            kept. Open any test, press <strong>Record</strong>, and choose <em>Add them to this
+            test</em>. The recorder's own menu (its icon in the browser's toolbar) also shows them,
+            and lists the TraceIQ addresses you have allowed, each with <em>Remove</em>.</li>
+          <li>Only one recording can run at a time. <em>Discard this recording</em> in the box, or
+            <em>Discard recording</em> in the recorder's menu, throws the current one away.</li>
         </ul>
         <h3 id="run-another-test">Using one test inside another</h3>
         <p>Steps you need in many tests, such as signing in, can live in one test and be used by the
@@ -307,6 +382,13 @@
           <li>Make sure the right project is selected at the top of the sidebar.</li>
           <li>Click the suite to open it, and choose the environment to test in the <strong>environment</strong> menu.</li>
           <li>Press <strong>Run suite</strong>. TraceIQ opens <em>Runs</em>; the new run appears at the top and fills in as tests finish.</li>
+        </ol>
+        <h3>…record a test instead of writing it</h3>
+        <ol class="steps">
+          <li>Open the suite it belongs in and press <strong>New test</strong>, and give the test a name.</li>
+          <li>Press <strong>Record</strong> on the bar at the bottom, type the address to start on and press <strong>Start recording</strong>.</li>
+          <li>Do the journey in the new tab. Before finishing, press <strong>Add check</strong> and click a text that proves it worked.</li>
+          <li>Press <strong>Finish</strong>, read the steps through, then <strong>Save Test</strong> and <strong>Run now</strong>.</li>
         </ol>
         <h3>…write a new test</h3>
         <ol class="steps">
@@ -365,7 +447,7 @@
         </div>
 
         <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
-        <p class="footer-note">Describes the Suites page as of October 2026.</p>
+        <p class="footer-note">Describes the Suites page as of November 2026.</p>
       </div>
     </main>
 
