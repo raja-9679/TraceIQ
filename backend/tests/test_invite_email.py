@@ -50,7 +50,7 @@ def test_workspace_name_cannot_carry_an_address_or_markup():
     # The only link is ours.
     assert html.count("<a ") == 1
     assert f'<a href="{settings.FRONTEND_BASE_URL.rstrip("/")}/signup?token=' in html
-    assert text.count("http") == 1 + settings.FRONTEND_BASE_URL.count("http") - 1
+    assert text.count("://") == 1  # ours; the word "https" alone is not an address
 
 
 def test_inviter_is_an_account_address_or_nothing():
