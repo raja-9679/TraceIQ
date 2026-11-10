@@ -65,9 +65,9 @@ def outbox(monkeypatch):
     return sent
 
 
-async def _scene(maker, *, demo: bool = False):
+async def _scene(maker, *, demo: bool = False, verified: bool = True):
     async with maker() as s:
-        admin = User(email="admin@acme.test", hashed_password="x", full_name="Maya Rao")
+        admin = User(email="admin@acme.test", hashed_password="x", full_name="Maya Rao", is_verified=verified)
         member = User(email="member@acme.test", hashed_password="x", full_name="Li Chen")
         existing = User(email="already@acme.test", hashed_password="x", full_name="Sam Roy")
         s.add(admin); s.add(member); s.add(existing)
@@ -118,6 +118,17 @@ async def test_invitation_is_emailed_and_link_still_returned(maker, client, outb
     listed = (await client.get(f"/api/workspaces/{sc['ws']}/invitations", headers=sc["ADMIN"])).json()
     assert listed[0]["id"] == body["invitation_id"] and "token" not in listed[0]
     assert listed[0]["expired"] is False
+
+
+async def test_unverified_inviter_is_not_named(maker, client, outbox):
+    # Registration accepts any address, so an unverified inviter's "address"
+    # is whatever they typed — it must not be mailed as the sender's identity.
+    sc = await _scene(maker, verified=False)
+    await client.post(f"/api/workspaces/{sc['ws']}/invitations", headers=sc["ADMIN"],
+                      json={"email": "new@acme.test"})
+    text_body = outbox[0][3]
+    assert text_body.startswith("A colleague invited you")
+    assert "admin@acme.test" not in text_body and "Maya Rao" not in text_body
 
 
 async def test_no_smtp_means_no_mail_but_the_link_works_as_before(maker, client, monkeypatch):

@@ -1727,7 +1727,8 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   "added to" note; both go through `send_account_email`. Anyone who may invite
   can make the server mail an address of their choosing, so nothing free-text
   may read as a message of its own: the subject carries NO caller text, the
-  inviter is shown by ACCOUNT EMAIL (never the display name), and the
+  inviter is shown by ACCOUNT EMAIL, and only a VERIFIED one (never the display
+  name; unverified → "A colleague"), and the
   workspace name is reduced to letters/digits/`- _ & ' ( )` (no `. / : @`, so
   no address can be formed), cut to 80 chars, HTML-escaped; hence also `30/hour` on
   the three invite endpoints and a strict address check for NEW invitations

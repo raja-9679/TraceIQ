@@ -583,9 +583,12 @@ class WorkspaceService:
         from app.models import User, Workspace
         ws = await session.get(Workspace, workspace_id)
         inviter = await session.get(User, invited_by_id)
-        # The inviter's account address, not their display name: see
-        # invite_email (a name is free text and would be mailed as such).
-        return (ws.name if ws else None, inviter.email if inviter else None)
+        # The inviter's account address, not their display name (a name is
+        # free text and would be mailed as such) — and only an address the
+        # inviter has PROVED is theirs. Anyone can register as
+        # ceo@their-company.example; unverified, the mail says "A colleague".
+        proven = inviter is not None and inviter.is_verified is True
+        return (ws.name if ws else None, inviter.email if proven else None)
 
     @staticmethod
     async def _email_invitation(invite, token: str, session: AsyncSession) -> bool:

@@ -11,7 +11,9 @@ Three things shape this module:
   to an address of their choosing, so nothing they can type freely may read as
   a message of its own. The subject carries no caller text at all. The inviter
   is shown by their ACCOUNT EMAIL, never their display name (a name can be set
-  to "IT Security: verify at evil.example"). The workspace name is reduced to
+  to "IT Security: verify at evil.example"), and only when that address is
+  verified (the caller passes None otherwise): registration accepts any
+  address, so an unverified one is free text too. The workspace name is reduced to
   letters, digits and a few marks — no dots, slashes, colons or @, so it cannot
   form a web address — cut short, and HTML-escaped in the HTML part.
 * **Demo workspaces never send** (the rule for every outbound path).
