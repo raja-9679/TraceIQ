@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { PageScript } from '@/api/estates';
 import { shortHash } from '@/components/estate/helpers';
+import { Pill } from '@/components/redesign/primitives';
 import ApproveForm from './ApproveForm';
 
 interface Props {
@@ -12,51 +13,52 @@ interface Props {
 
 export default function ScriptsTable({ scripts, approvingId, onApprove, onRevoke }: Props) {
     const [openId, setOpenId] = useState<number | null>(null);
-    if (scripts.length === 0) return <p className="text-sm text-slate-500">No scripts recorded yet — run a check.</p>;
+    if (scripts.length === 0) return <p className="rounded-2xl bg-background p-4 text-sm text-ink-soft">No scripts recorded yet — run a check.</p>;
     return (
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-2xl border border-border">
+        <table className="w-full text-sm text-ink">
             <caption className="sr-only">Scripts on this page, unapproved first</caption>
             <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500">
-                    <th scope="col" className="py-2">Script</th>
-                    <th scope="col">SHA-384</th>
-                    <th scope="col">SRI</th>
-                    <th scope="col">Approval</th>
+                <tr className="bg-background text-left text-[11px] uppercase tracking-[0.04em] text-ink-soft">
+                    <th scope="col" className="px-3 py-2">Script</th>
+                    <th scope="col" className="px-2">SHA-384</th>
+                    <th scope="col" className="px-2">SRI</th>
+                    <th scope="col" className="px-3">Approval</th>
                 </tr>
             </thead>
             <tbody>
                 {scripts.map(s => {
                     const label = s.src || `inline script ${shortHash(s.sha384)}`;
                     return (
-                        <tr key={s.id} className="border-t border-slate-100 align-top">
-                            <td className="max-w-[420px] py-2">
-                                <div className="break-all font-medium text-slate-800">{label}</div>
-                                <div className="text-[11px] text-slate-500">
+                        <tr key={s.id} className="border-t border-[#F0EEE8] align-top">
+                            <td className="max-w-[420px] px-3 py-2.5">
+                                <div className="break-all font-semibold text-ink">{label}</div>
+                                <div className="text-[11px] text-ink-soft">
                                     {s.kind}{s.third_party ? ' · third party' : ' · first party'}
                                     {!s.present && ' · removed'} · first seen {s.first_seen_at.slice(0, 10)}
                                 </div>
                                 {s.authorized && s.justification && (
-                                    <div className="mt-1 text-xs text-slate-600">Justification: {s.justification}</div>
+                                    <div className="mt-1 text-xs text-ink-soft">Justification: {s.justification}</div>
                                 )}
                                 {openId === s.id && (
                                     <ApproveForm scriptLabel={label} pending={approvingId === s.id}
                                         onSubmit={(j) => { onApprove(s, j); setOpenId(null); }} onCancel={() => setOpenId(null)} />
                                 )}
                             </td>
-                            <td className="font-mono text-[11px] text-slate-600" title={s.sha384 ?? ''}>{shortHash(s.sha384)}</td>
-                            <td className="text-xs">{s.integrity ? 'yes' : <span className="text-amber-700">none</span>}</td>
-                            <td>
+                            <td className="px-2 py-2.5 font-mono text-[11px] text-ink-soft" title={s.sha384 ?? ''}>{shortHash(s.sha384)}</td>
+                            <td className="px-2 py-2.5 text-xs">{s.integrity ? 'yes' : <span className="font-semibold text-pastel-ink-butter">none</span>}</td>
+                            <td className="px-3 py-2.5">
                                 {s.authorized ? (
                                     <div className="space-y-1">
-                                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800">approved</span>
-                                        <button type="button" className="block text-xs text-slate-500 hover:text-rose-700"
+                                        <Pill tone="mint">approved</Pill>
+                                        <button type="button" className="block text-xs font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline"
                                             onClick={() => onRevoke(s)}>Withdraw approval</button>
                                     </div>
                                 ) : (
                                     <div className="space-y-1">
-                                        <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-800">unapproved</span>
+                                        <Pill tone="peach">unapproved</Pill>
                                         {s.present && openId !== s.id && (
-                                            <button type="button" className="block text-xs font-medium text-indigo-700 hover:underline"
+                                            <button type="button" className="block text-xs font-semibold text-ink underline underline-offset-2"
                                                 onClick={() => setOpenId(s.id)}>Approve…</button>
                                         )}
                                     </div>
@@ -67,5 +69,6 @@ export default function ScriptsTable({ scripts, approvingId, onApprove, onRevoke
                 })}
             </tbody>
         </table>
+        </div>
     );
 }

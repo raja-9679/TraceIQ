@@ -1,4 +1,5 @@
 import type { AccessMatrix, AccessMatrixInput, CellExpect, MatrixCellResult, MatrixRow, Verdict } from '@/api/accessMatrix';
+import type { Tone } from '@/components/redesign/kinds';
 
 export const ANONYMOUS = 'anonymous';
 
@@ -7,6 +8,14 @@ export const VERDICT_TONE: Record<Verdict, string> = {
     fail: 'bg-rose-50 text-rose-800 border-rose-300',
     inconclusive: 'bg-amber-50 text-amber-800 border-amber-200',
     pending: 'bg-slate-50 text-slate-500 border-slate-200',
+};
+
+/** Pastel chip tone per verdict, for Pill labels in the redesign. */
+export const VERDICT_PILL: Record<Verdict, Tone> = {
+    pass: 'mint',
+    fail: 'peach',
+    inconclusive: 'butter',
+    pending: 'neutral',
 };
 
 export const EXPECT_TONE: Record<CellExpect, string> = {

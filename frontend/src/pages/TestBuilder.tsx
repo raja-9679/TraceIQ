@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Save, Loader2, ArrowLeft, Link2, MousePointerClick, TextCursorInput, Code2, CheckCircle2, FileJson, Zap } from "lucide-react";
+import { Plus, Save, Loader2, ArrowLeft, Link2, MousePointerClick, TextCursorInput, Code2, CheckCircle2, FileJson, Zap, Database, Monitor } from "lucide-react";
 import { toast } from 'sonner';
 import { StepComponent, TestStep } from "@/components/test-builder/StepComponent";
 import { CaseHistoryDialog } from "@/components/test-builder/CaseHistoryDialog";
@@ -12,6 +12,8 @@ import { api, getTestCase, updateTestCase } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { newId } from '@/lib/ids';
+import { cn } from '@/lib/utils';
+import { Eyebrow, PageHeader, Pill } from '@/components/redesign/primitives';
 
 const CASE_PRIORITIES = ['', 'critical', 'high', 'medium', 'low'];
 
@@ -324,29 +326,40 @@ export default function TestBuilder() {
         }
     };
 
+    const hasMatrix = matrixBrowsers.length > 0 || matrixDevices.length > 0;
+    const hasDataset = !!datasetText.trim();
+    const toggleClass = (open: boolean, configured: boolean) => cn(
+        'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink/20',
+        configured
+            ? 'border-transparent bg-pastel-lavender text-pastel-ink-lavender'
+            : open ? 'border-ink/30 bg-white text-ink' : 'border-border bg-white text-ink-soft hover:bg-background hover:text-ink'
+    );
+    const addButtonClass = 'h-9 shrink-0 rounded-full px-3 text-sm font-medium text-ink-soft hover:bg-background hover:text-ink';
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="w-full"
+            className="flex w-full flex-col gap-5 pb-16"
         >
-            {/* ── Sticky Frosted Header ── */}
-            <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200 shadow-sm mb-8 -mx-6 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
-                <div className="flex items-center gap-4 flex-1">
-                    <Button variant="ghost" size="icon" onClick={handleCancel} aria-label="Back" title="Back" className="shrink-0 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full h-10 w-10">
-                        <ArrowLeft className="h-5 w-5" />
-                    </Button>
-                    <div className="flex-1 max-w-2xl">
-                        <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-1 ml-1">{isEditing ? 'Edit Test Case' : 'New Test Case'}</p>
-                        <Input
-                            placeholder="Enter Test Case Name..."
-                            value={testName}
-                            onChange={(e) => setTestName(e.target.value)}
-                            className="text-2xl font-black text-slate-900 border-none shadow-none bg-transparent hover:bg-slate-50 focus-visible:ring-indigo-500 rounded-xl px-2 h-12 transition-colors placeholder:text-slate-300"
-                        />
-                    </div>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
+            {/* Header stays in view on wide screens so Save is always reachable. */}
+            <div className="lg:sticky lg:top-0 lg:z-40 lg:-mt-3 lg:bg-background lg:pt-3">
+            <PageHeader
+                crumbs={<>
+                    <button type="button" onClick={handleCancel} className="inline-flex items-center gap-1 hover:text-ink">
+                        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Back
+                    </button>
+                    <span aria-hidden="true">/</span>
+                    <span>{isEditing ? 'Edit Test Case' : 'New Test Case'}</span>
+                </>}
+                title={<span className="break-words [overflow-wrap:anywhere]">{testName.trim() || (isEditing ? 'Untitled test' : 'New test case')}</span>}
+                badge={isDirty && (
+                    <Pill tone="butter">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden="true" /> Unsaved changes
+                    </Pill>
+                )}
+                subtitle={`${steps.length} step${steps.length === 1 ? '' : 's'} · nothing is saved until you press ${isEditing ? 'Update Test' : 'Save Test'}.`}
+                actions={<>
                     {isEditing && caseId && (
                         <CaseHistoryDialog
                             caseId={parseInt(caseId)}
@@ -358,160 +371,194 @@ export default function TestBuilder() {
                             }}
                         />
                     )}
+                    <Button variant="outline" onClick={handleCancel}>
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={() => saveMutation.mutate()}
+                        disabled={!testName || steps.length === 0 || saveMutation.isPending}
+                    >
+                        {saveMutation.isPending ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                <Save className="h-4 w-4" /> {isEditing ? 'Update Test' : 'Save Test'}
+                            </>
+                        )}
+                    </Button>
+                </>}
+                toolbar={<>
                     <button
                         type="button"
                         onClick={() => setShowDataset(!showDataset)}
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${datasetText.trim() ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                        aria-expanded={showDataset}
+                        aria-controls="test-builder-dataset"
+                        className={toggleClass(showDataset, hasDataset)}
                         title="Run this case once per dataset row; reference values in steps as {{data.KEY}}"
                     >
-                        Dataset{datasetText.trim() ? ' ✓' : ''}
+                        <Database className="h-4 w-4" aria-hidden="true" />
+                        Dataset{hasDataset ? ' ✓' : ''}
                     </button>
                     <button
                         type="button"
                         onClick={() => setShowMatrix(!showMatrix)}
-                        className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${(matrixBrowsers.length || matrixDevices.length) ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                        aria-expanded={showMatrix}
+                        aria-controls="test-builder-matrix"
+                        className={toggleClass(showMatrix, hasMatrix)}
                         title="Override which browsers/devices this case runs on. Empty = inherit from the module."
                     >
-                        Matrix{(matrixBrowsers.length || matrixDevices.length) ? ' ✓' : ''}
+                        <Monitor className="h-4 w-4" aria-hidden="true" />
+                        Matrix{hasMatrix ? ' ✓' : ''}
                     </button>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600" title="Critical cases count for release readiness and the quality gate's critical-case rule.">
+                </>}
+            />
+            </div>
+
+            {/* ── Name, priority and login behaviour ── */}
+            <section aria-labelledby="test-builder-details" className="flex flex-col gap-4 rounded-3xl border border-border bg-white p-5 sm:p-6">
+                <h2 id="test-builder-details" className="text-sm font-semibold text-ink">Test details</h2>
+                <div className="flex flex-wrap items-end gap-4">
+                    <label htmlFor="test-builder-name" className="flex min-w-[240px] flex-[3_1_320px] flex-col gap-1 text-xs font-semibold text-ink-soft">
+                        Name
+                        <Input
+                            id="test-builder-name"
+                            placeholder="Enter Test Case Name..."
+                            value={testName}
+                            onChange={(e) => setTestName(e.target.value)}
+                            className="h-11 rounded-xl border-border bg-white px-3 text-base font-semibold text-ink shadow-none placeholder:font-normal placeholder:text-ink-soft/60"
+                        />
+                    </label>
+                    <label className="flex min-w-[160px] flex-[1_1_160px] flex-col gap-1 text-xs font-semibold text-ink-soft" title="Critical cases count for release readiness and the quality gate's critical-case rule.">
                         Priority
                         <select
                             aria-label="Priority"
                             value={priority}
                             onChange={(e) => { setPriority(e.target.value); setIsDirty(true); }}
-                            className="h-8 rounded-full border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700"
+                            className="h-11 rounded-xl border border-border bg-white px-3 text-sm font-normal text-ink"
                         >
                             {CASE_PRIORITIES.map((p) => <option key={p} value={p}>{p ? p[0].toUpperCase() + p.slice(1) : 'None'}</option>)}
                         </select>
                     </label>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none" title="A passing run of this case captures the logged-in session (cookies + storage) and stores it for the project. Other cases then start already logged in.">
-                        <input type="checkbox" checked={isAuthSetup} onChange={(e) => { setIsAuthSetup(e.target.checked); setIsDirty(true); }} className="rounded accent-indigo-600" />
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-[#F0EEE8] pt-4">
+                    <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-ink" title="A passing run of this case captures the logged-in session (cookies + storage) and stores it for the project. Other cases then start already logged in.">
+                        <input type="checkbox" checked={isAuthSetup} onChange={(e) => { setIsAuthSetup(e.target.checked); setIsDirty(true); }} className="h-[18px] w-[18px] accent-ink" />
                         Auth setup case
                     </label>
                     {!isAuthSetup && (
-                        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none" title="Uncheck for tests that must exercise the real login flow — they will start from a clean, logged-out browser.">
-                            <input type="checkbox" checked={useAuthSession} onChange={(e) => { setUseAuthSession(e.target.checked); setIsDirty(true); }} className="rounded accent-indigo-600" />
+                        <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-ink" title="Uncheck for tests that must exercise the real login flow — they will start from a clean, logged-out browser.">
+                            <input type="checkbox" checked={useAuthSession} onChange={(e) => { setUseAuthSession(e.target.checked); setIsDirty(true); }} className="h-[18px] w-[18px] accent-ink" />
                             Use auth session
                         </label>
                     )}
-                    {isDirty && <span className="text-xs font-bold font-mono text-amber-500 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 mr-2 flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div> Unsaved Changes</span>}
-                    <Button variant="outline" onClick={handleCancel} className="rounded-xl font-semibold text-slate-700 bg-white hover:bg-slate-50 border-slate-200 shadow-sm h-11 px-6 transition-all hidden sm:flex">
-                        Cancel
-                    </Button>
-                    <Button 
-                        onClick={() => saveMutation.mutate()} 
-                        disabled={!testName || steps.length === 0 || saveMutation.isPending}
-                        className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 h-11 px-8 transition-all"
-                    >
-                        {saveMutation.isPending ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                <Save className="mr-2 h-4 w-4" /> {isEditing ? 'Update Test' : 'Save Test'}
-                            </>
-                        )}
-                    </Button>
                 </div>
-            </div>
+            </section>
 
-            <div className="max-w-4xl mx-auto pb-24">
-                {isEditing && caseId && serverData?.project_id && (
+            {isEditing && caseId && serverData?.project_id && (
+                // The panel carries its own bottom margin; the page's gap spaces it here.
+                <div className="[&>section]:mb-0">
                     <CaseOwnershipPanel caseId={parseInt(caseId)} projectId={serverData.project_id} />
-                )}
-                {isEditing && caseId && <UsedByNotice caseId={parseInt(caseId)} />}
-                {/* ── Per-case execution matrix panel ── */}
-                {showMatrix && (
-                    <div className="mb-8 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5">
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-sm font-bold text-indigo-800">Execution Matrix (this case only)</h3>
-                            <button type="button" onClick={() => { setMatrixBrowsers([]); setMatrixDevices([]); setIsDirty(true); }} className="text-xs text-slate-500 hover:text-rose-600">Clear (inherit)</button>
-                        </div>
-                        <p className="text-xs text-slate-600 mb-3">
-                            This case runs once per selected browser × device. Leave everything unchecked to
-                            inherit the module's matrix (Module Settings → Execution Matrix), which itself
-                            inherits from parent modules and your Settings defaults.
-                        </p>
-                        <div className="grid sm:grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Browsers</p>
-                                {['chromium', 'firefox', 'webkit'].map((b) => (
-                                    <label key={b} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none bg-white border border-indigo-100 rounded-lg px-3 py-2">
-                                        <input
-                                            type="checkbox"
-                                            className="rounded accent-indigo-600"
-                                            checked={matrixBrowsers.includes(b)}
-                                            onChange={(e) => { setMatrixBrowsers(e.target.checked ? [...matrixBrowsers, b] : matrixBrowsers.filter(x => x !== b)); setIsDirty(true); }}
-                                        />
-                                        <span className="capitalize">{b}</span>
-                                    </label>
-                                ))}
-                            </div>
-                            <div className="space-y-1.5">
-                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Devices</p>
-                                {['Desktop', 'Mobile (Generic)', 'iPhone 13', 'Pixel 5'].map((d) => (
-                                    <label key={d} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none bg-white border border-indigo-100 rounded-lg px-3 py-2">
-                                        <input
-                                            type="checkbox"
-                                            className="rounded accent-indigo-600"
-                                            checked={matrixDevices.includes(d)}
-                                            onChange={(e) => { setMatrixDevices(e.target.checked ? [...matrixDevices, d] : matrixDevices.filter(x => x !== d)); setIsDirty(true); }}
-                                        />
-                                        {d}
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
+                </div>
+            )}
+            {isEditing && caseId && (
+                <div className="empty:hidden [&>div]:mb-0">
+                    <UsedByNotice caseId={parseInt(caseId)} />
+                </div>
+            )}
+
+            {/* ── Per-case execution matrix panel ── */}
+            {showMatrix && (
+                <section id="test-builder-matrix" aria-labelledby="test-builder-matrix-title" className="flex flex-col gap-3 rounded-3xl border border-border bg-white p-5 sm:p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 id="test-builder-matrix-title" className="text-sm font-semibold text-ink">Execution Matrix (this case only)</h2>
+                        <Button type="button" variant="outline" size="sm" onClick={() => { setMatrixBrowsers([]); setMatrixDevices([]); setIsDirty(true); }}>Clear (inherit)</Button>
                     </div>
-                )}
-
-                {/* ── Data-driven dataset panel ── */}
-                {showDataset && (
-                    <div className="mb-8 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5">
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-sm font-bold text-indigo-800">Dataset (data-driven runs)</h3>
-                            <button type="button" onClick={() => { setDatasetText(''); setIsDirty(true); }} className="text-xs text-slate-500 hover:text-rose-600">Clear</button>
-                        </div>
-                        <p className="text-xs text-slate-600 mb-3">
-                            A JSON array of row objects. The case runs once per row; reference values in any step as <code className="bg-white px-1 rounded">{'{{data.KEY}}'}</code>. Leave empty for a normal single run.
-                        </p>
-                        <textarea
-                            value={datasetText}
-                            onChange={(e) => { setDatasetText(e.target.value); setIsDirty(true); }}
-                            placeholder={'[\n  {"query": "election results", "expect": "Bihar"},\n  {"query": "cricket score", "expect": "India"}\n]'}
-                            spellCheck={false}
-                            className="w-full h-40 rounded-xl border border-indigo-200 bg-white p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-                        />
+                    <p className="text-sm text-ink-soft">
+                        This case runs once per selected browser × device. Leave everything unchecked to
+                        inherit the module's matrix (Module Settings → Execution Matrix), which itself
+                        inherits from parent modules and your Settings defaults.
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <fieldset className="flex flex-col gap-1.5">
+                            <legend className="mb-1.5"><Eyebrow>Browsers</Eyebrow></legend>
+                            {['chromium', 'firefox', 'webkit'].map((b) => (
+                                <label key={b} className="flex min-h-10 cursor-pointer select-none items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm text-ink hover:bg-background">
+                                    <input
+                                        type="checkbox"
+                                        className="h-[18px] w-[18px] accent-ink"
+                                        checked={matrixBrowsers.includes(b)}
+                                        onChange={(e) => { setMatrixBrowsers(e.target.checked ? [...matrixBrowsers, b] : matrixBrowsers.filter(x => x !== b)); setIsDirty(true); }}
+                                    />
+                                    <span className="capitalize">{b}</span>
+                                </label>
+                            ))}
+                        </fieldset>
+                        <fieldset className="flex flex-col gap-1.5">
+                            <legend className="mb-1.5"><Eyebrow>Devices</Eyebrow></legend>
+                            {['Desktop', 'Mobile (Generic)', 'iPhone 13', 'Pixel 5'].map((d) => (
+                                <label key={d} className="flex min-h-10 cursor-pointer select-none items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm text-ink hover:bg-background">
+                                    <input
+                                        type="checkbox"
+                                        className="h-[18px] w-[18px] accent-ink"
+                                        checked={matrixDevices.includes(d)}
+                                        onChange={(e) => { setMatrixDevices(e.target.checked ? [...matrixDevices, d] : matrixDevices.filter(x => x !== d)); setIsDirty(true); }}
+                                    />
+                                    {d}
+                                </label>
+                            ))}
+                        </fieldset>
                     </div>
-                )}
+                </section>
+            )}
 
-                {/* ── Test Steps Canvas ── */}
-                <div className="mb-10">
-                    <div className="flex items-center justify-between mb-8 px-2">
-                        <div>
-                            <h2 className="text-2xl font-extrabold text-slate-900">Execution Timeline</h2>
-                            <p className="text-slate-500 text-sm mt-1">Design the sequence of actions and assertions.</p>
-                        </div>
+            {/* ── Data-driven dataset panel ── */}
+            {showDataset && (
+                <section id="test-builder-dataset" aria-labelledby="test-builder-dataset-title" className="flex flex-col gap-3 rounded-3xl border border-border bg-white p-5 sm:p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 id="test-builder-dataset-title" className="text-sm font-semibold text-ink">Dataset (data-driven runs)</h2>
+                        <Button type="button" variant="outline" size="sm" onClick={() => { setDatasetText(''); setIsDirty(true); }}>Clear</Button>
                     </div>
+                    <p className="text-sm text-ink-soft">
+                        A JSON array of row objects. The case runs once per row; reference values in any step as <code className="rounded bg-background px-1 font-mono text-xs text-ink">{'{{data.KEY}}'}</code>. Leave empty for a normal single run.
+                    </p>
+                    <textarea
+                        aria-labelledby="test-builder-dataset-title"
+                        value={datasetText}
+                        onChange={(e) => { setDatasetText(e.target.value); setIsDirty(true); }}
+                        placeholder={'[\n  {"query": "election results", "expect": "Bihar"},\n  {"query": "cricket score", "expect": "India"}\n]'}
+                        spellCheck={false}
+                        className="h-40 w-full rounded-xl border border-border bg-white p-3 font-mono text-xs text-ink focus:outline-none focus:ring-2 focus:ring-ink/20"
+                    />
+                </section>
+            )}
 
-                    <div className="relative pl-4 md:pl-10">
-                        {/* Vertical Timeline Line */}
-                        {steps.length > 0 && (
-                            <div className="absolute left-[39px] md:left-[63px] top-6 bottom-0 w-0.5 bg-slate-200 shadow-inner rounded-full" />
-                        )}
+            {/* ── Test Steps ── */}
+            <section aria-labelledby="test-builder-steps" className="flex flex-col rounded-3xl border border-border bg-white">
+                <div className="flex flex-wrap items-end justify-between gap-2 border-b border-[#F0EEE8] px-5 py-4 sm:px-6">
+                    <div className="flex flex-col gap-0.5">
+                        <h2 id="test-builder-steps" className="text-lg font-semibold text-ink">
+                            Execution Timeline <span className="ml-1 font-mono text-xs font-normal text-ink-soft">{steps.length}</span>
+                        </h2>
+                        <p className="text-sm text-ink-soft">Design the sequence of actions and assertions.</p>
+                    </div>
+                </div>
 
-                        {steps.length === 0 ? (
-                            <div className="text-center py-20 px-6 rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/50">
-                                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100">
-                                    <Plus className="h-8 w-8 text-slate-300" />
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-700 mb-1">No execution steps</h3>
-                                <p className="text-slate-500 max-w-sm mx-auto">Start building your test case by adding a navigation step below.</p>
-                            </div>
-                        ) : (
+                <div className="px-4 py-5 sm:px-6">
+                    {steps.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 rounded-2xl bg-background px-6 py-14 text-center">
+                            <span className="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-white" aria-hidden="true">
+                                <Plus className="h-6 w-6 text-ink-soft" />
+                            </span>
+                            <p className="text-base font-semibold text-ink">No execution steps</p>
+                            <p className="max-w-sm text-sm text-ink-soft">Start building your test case by adding a navigation step below.</p>
+                        </div>
+                    ) : (
+                        <div className="relative">
+                            {/* Vertical timeline line through the step number badges */}
+                            <div className="absolute bottom-6 left-[11px] top-6 w-0.5 rounded-full bg-[#ECEAE3] sm:left-[27px]" aria-hidden="true" />
                             <div className="space-y-6">
                                 <AnimatePresence mode='popLayout'>
                                     {steps.map((step, index) => (
@@ -538,43 +585,43 @@ export default function TestBuilder() {
                                     ))}
                                 </AnimatePresence>
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* ── Add Step Floating Bar ── */}
-                <div className="fixed sm:sticky bottom-6 sm:bottom-8 left-1/2 sm:left-auto sm:translate-x-0 -translate-x-1/2 z-30 w-full sm:w-auto px-4 sm:px-0 pointer-events-none">
-                    <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-800 p-2 sm:p-2.5 rounded-3xl sm:rounded-full shadow-2xl flex flex-wrap sm:flex-nowrap justify-center gap-1.5 sm:gap-2 max-w-full sm:max-w-fit mx-auto pointer-events-auto">
-                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full bg-indigo-600/90 text-white hover:bg-indigo-500 hover:text-white transition-colors shrink-0 text-xs sm:text-sm font-semibold" onClick={() => addStep('' as TestStep['type'])}>
-                            <Plus className="mr-1.5 sm:mr-2 h-4 w-4" /> Step
+                {/* ── Add-step bar: sticks to the bottom of the viewport while the timeline scrolls ── */}
+                <div className="sticky bottom-4 z-30 px-3 pb-4 sm:px-5">
+                    <div role="toolbar" aria-label="Add a step" className="flex flex-wrap items-center justify-center gap-1 rounded-3xl border border-border bg-white/95 p-1.5 shadow-[0_12px_40px_rgba(28,27,34,0.10)] backdrop-blur sm:rounded-full">
+                        <Button size="sm" className="h-9 px-4 text-sm" onClick={() => addStep('' as TestStep['type'])}>
+                            <Plus className="h-4 w-4" /> Step
                         </Button>
-                        <div className="w-px h-6 bg-slate-800 my-auto hidden sm:block"></div>
-                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('goto')}>
-                            <Link2 className="mr-1.5 sm:mr-2 h-4 w-4 text-emerald-400" /> Navigate
+                        <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+                        <Button variant="ghost" className={addButtonClass} onClick={() => addStep('goto')}>
+                            <Link2 className="h-4 w-4" /> Navigate
                         </Button>
-                        <div className="w-px h-6 bg-slate-800 my-auto hidden sm:block"></div>
-                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('click')}>
-                            <MousePointerClick className="mr-1.5 sm:mr-2 h-4 w-4 text-indigo-400" /> Click
+                        <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+                        <Button variant="ghost" className={addButtonClass} onClick={() => addStep('click')}>
+                            <MousePointerClick className="h-4 w-4" /> Click
                         </Button>
-                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('fill')}>
-                            <TextCursorInput className="mr-1.5 sm:mr-2 h-4 w-4 text-indigo-400" /> Fill
+                        <Button variant="ghost" className={addButtonClass} onClick={() => addStep('fill')}>
+                            <TextCursorInput className="h-4 w-4" /> Fill
                         </Button>
-                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('expect-visible')}>
-                            <CheckCircle2 className="mr-1.5 sm:mr-2 h-4 w-4 text-cyan-400" /> Assert
+                        <Button variant="ghost" className={addButtonClass} onClick={() => addStep('expect-visible')}>
+                            <CheckCircle2 className="h-4 w-4" /> Assert
                         </Button>
-                        <div className="w-px h-6 bg-slate-800 my-auto hidden sm:block"></div>
-                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('http-request')}>
-                            <FileJson className="mr-1.5 sm:mr-2 h-4 w-4 text-amber-400" /> API
+                        <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+                        <Button variant="ghost" className={addButtonClass} onClick={() => addStep('http-request')}>
+                            <FileJson className="h-4 w-4" /> API
                         </Button>
-                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('amp-validate')}>
-                            <Zap className="mr-1.5 sm:mr-2 h-4 w-4 text-violet-400" /> AMP
+                        <Button variant="ghost" className={addButtonClass} onClick={() => addStep('amp-validate')}>
+                            <Zap className="h-4 w-4" /> AMP
                         </Button>
-                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('run-script')}>
-                            <Code2 className="mr-1.5 sm:mr-2 h-4 w-4 text-rose-400" /> Script
+                        <Button variant="ghost" className={addButtonClass} onClick={() => addStep('run-script')}>
+                            <Code2 className="h-4 w-4" /> Script
                         </Button>
                     </div>
                 </div>
-            </div>
+            </section>
         </motion.div>
     );
 }

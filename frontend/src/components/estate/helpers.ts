@@ -1,7 +1,7 @@
 // Pure helpers for the Estate and Script inventory pages (kept out of the
 // component files so fast refresh works and they can be unit-tested).
-import { useEffect, useState } from 'react';
 import type { ElementCheck, MonitoredPage, MonitoredPageInput } from '@/api/estates';
+import type { Tone } from '@/components/redesign/kinds';
 
 export function scoreTone(score: number | null | undefined): string {
     if (score === null || score === undefined) return 'bg-slate-100 text-slate-500';
@@ -16,6 +16,23 @@ export function statusTone(status: string | null | undefined): string {
         case 'warn': case 'changed': return 'bg-amber-100 text-amber-800';
         case 'fail': case 'alert': case 'error': return 'bg-rose-100 text-rose-800';
         default: return 'bg-slate-100 text-slate-600';
+    }
+}
+
+/** Pastel Pill tones matching scoreTone / statusTone, for the redesign. */
+export function scorePill(score: number | null | undefined): Tone {
+    if (score === null || score === undefined) return 'neutral';
+    if (score >= 90) return 'mint';
+    if (score >= 75) return 'butter';
+    return 'peach';
+}
+
+export function statusPill(status: string | null | undefined): Tone {
+    switch (status) {
+        case 'pass': case 'ok': return 'mint';
+        case 'warn': case 'changed': return 'butter';
+        case 'fail': case 'alert': case 'error': return 'peach';
+        default: return 'neutral';
     }
 }
 
@@ -105,19 +122,3 @@ export function shortHash(h: string | null | undefined): string {
     return h.length > 22 ? `${h.slice(0, 22)}…` : h;
 }
 
-/** The project picked in the sidebar, kept in sync across pages. */
-export function useActiveProject(): [number | null, (id: number) => void] {
-    const read = () => { const s = localStorage.getItem('activeProjectId'); return s ? parseInt(s) : null; };
-    const [projectId, setProjectId] = useState<number | null>(read);
-    useEffect(() => {
-        const h = () => setProjectId(read());
-        window.addEventListener('projectChanged', h);
-        return () => window.removeEventListener('projectChanged', h);
-    }, []);
-    const select = (id: number) => {
-        setProjectId(id);
-        localStorage.setItem('activeProjectId', id.toString());
-        window.dispatchEvent(new Event('projectChanged'));
-    };
-    return [projectId, select];
-}

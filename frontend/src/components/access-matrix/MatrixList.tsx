@@ -1,5 +1,5 @@
 import type { AccessMatrix } from '@/api/accessMatrix';
-import { Button } from '@/components/ui/button';
+import { ListGroup, ListRow } from '@/components/redesign/primitives';
 
 interface Props {
     matrices: AccessMatrix[];
@@ -7,26 +7,25 @@ interface Props {
     onSelect: (id: number | 'new') => void;
 }
 
+/** The project's matrices; "New matrix" lives in the page header. */
 export default function MatrixList({ matrices, selectedId, onSelect }: Props) {
     return (
-        <nav aria-label="Access matrices" className="space-y-2">
-            <Button type="button" variant="outline" className="w-full" onClick={() => onSelect('new')}>
-                New matrix
-            </Button>
-            {matrices.length === 0 && <p className="text-xs text-slate-500">No matrices in this project yet.</p>}
-            <ul className="space-y-1.5">
-                {matrices.map(m => (
-                    <li key={m.id}>
-                        <button type="button" onClick={() => onSelect(m.id)} aria-current={selectedId === m.id ? 'true' : undefined}
-                            className={`w-full rounded-lg border px-3 py-2 text-left ${selectedId === m.id ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-                            <div className="truncate text-sm font-semibold text-slate-800">{m.name}</div>
-                            <div className="text-[11px] text-slate-500">
-                                {m.rows.length} row(s) · {m.persona_ids.length + (m.include_anonymous ? 1 : 0)} identit{m.persona_ids.length + (m.include_anonymous ? 1 : 0) === 1 ? 'y' : 'ies'}
-                            </div>
-                        </button>
-                    </li>
-                ))}
-            </ul>
+        <nav aria-label="Access matrices">
+            <ListGroup title="Matrices" count={matrices.length}>
+                {matrices.length === 0 && <p className="px-4 py-6 text-center text-sm text-ink-soft">No matrices in this project yet.</p>}
+                {matrices.map(m => {
+                    const ids = m.persona_ids.length + (m.include_anonymous ? 1 : 0);
+                    return (
+                        <ListRow
+                            key={m.id}
+                            selected={selectedId === m.id}
+                            onSelect={() => onSelect(m.id)}
+                            title={<span className="break-words">{m.name}</span>}
+                            meta={`${m.rows.length} row(s) · ${ids} identit${ids === 1 ? 'y' : 'ies'}`}
+                        />
+                    );
+                })}
+            </ListGroup>
         </nav>
     );
 }

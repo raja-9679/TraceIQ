@@ -2,8 +2,8 @@ import type { MatrixRow, ProjectCase, RowKind, SwapSpec } from '@/api/accessMatr
 import { bodyText, defaultSwap, parseBody } from './grid';
 
 const METHODS = ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE'];
-const field = 'h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs';
-const lbl = 'block text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-0.5';
+const field = 'h-8 w-full rounded-lg border border-border bg-white px-2 text-xs text-ink';
+const lbl = 'mb-0.5 block text-[11px] font-semibold uppercase tracking-[0.04em] text-ink-soft';
 
 interface Props {
     row: MatrixRow;
@@ -82,7 +82,7 @@ export default function RowEditor({ row, personas, cases, onChange, onRemove }: 
             )}
 
             {row.kind !== 'case' && (
-                <label className="flex items-center gap-2 text-xs text-slate-600">
+                <label className="flex items-center gap-2 text-xs text-ink">
                     <input type="checkbox" checked={!!row.swap} disabled={!personas.length && !row.swap}
                         onChange={(e) => set({ swap: e.target.checked ? defaultSwap(personas[0].id) : null })} />
                     ID swap — fetch an id as the owner, then request it as every identity
@@ -90,7 +90,7 @@ export default function RowEditor({ row, personas, cases, onChange, onRemove }: 
             )}
 
             {row.swap && (
-                <div className="rounded-md border border-indigo-100 bg-indigo-50/40 p-2 space-y-2">
+                <div className="space-y-2 rounded-xl bg-background p-2">
                     <div className="grid grid-cols-2 gap-2">
                         <div>
                             <label className={lbl} htmlFor={id('owner')}>Owner persona</label>
@@ -138,7 +138,7 @@ export default function RowEditor({ row, personas, cases, onChange, onRemove }: 
                 </div>
             )}
 
-            <button type="button" onClick={onRemove} className="text-[11px] font-medium text-rose-600 hover:underline">
+            <button type="button" onClick={onRemove} className="text-xs font-semibold text-ink-soft underline underline-offset-2 hover:text-ink">
                 Remove row
             </button>
         </div>

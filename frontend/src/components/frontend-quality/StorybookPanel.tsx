@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getTestSuites } from '@/lib/api';
 import { Story, frontendQualityApi } from '@/api/frontendQuality';
+import { DetailCard } from '@/components/redesign/primitives';
 import { errorDetail, toggle } from './matrixHelpers';
 
 
@@ -38,60 +39,62 @@ export default function StorybookPanel({ projectId }: { projectId: number }) {
     }, [stories, filter]);
 
     return (
-        <div className="space-y-4">
-            <p className="text-sm text-slate-500 max-w-3xl">
-                Point at a Storybook on one of this project's hosts, pick stories, and get one case per story that opens its isolated
-                iframe and runs a visual match and/or an axe accessibility check. Each story keeps its own component baseline, named
-                after the story id; re-generating updates the existing case.
-            </p>
-            <form className="flex flex-wrap gap-2 items-end" onSubmit={(e) => { e.preventDefault(); load.mutate(); }}>
-                <div className="space-y-1 flex-1 min-w-[18rem]">
-                    <label htmlFor="sb-url" className="text-sm font-medium text-slate-700">Storybook URL</label>
-                    <Input id="sb-url" type="url" required placeholder="https://storybook.example.com/" value={url}
-                        onChange={(e) => setUrl(e.target.value)} />
-                </div>
-                <Button type="submit" disabled={load.isPending}>Load stories</Button>
-            </form>
+        <div className="flex flex-col gap-5">
+            <section aria-label="Storybook source" className="flex flex-col gap-4 rounded-3xl border border-border bg-white px-5 py-5 sm:px-6">
+                <p className="text-sm leading-relaxed text-ink-soft">
+                    Point at a Storybook on one of this project's hosts, pick stories, and get one case per story that opens its isolated
+                    iframe and runs a visual match and/or an axe accessibility check. Each story keeps its own component baseline, named
+                    after the story id; re-generating updates the existing case.
+                </p>
+                <form className="flex flex-wrap gap-2 items-end" onSubmit={(e) => { e.preventDefault(); load.mutate(); }}>
+                    <div className="space-y-1 flex-1 min-w-[18rem]">
+                        <label htmlFor="sb-url" className="text-sm font-semibold text-ink">Storybook URL</label>
+                        <Input id="sb-url" type="url" required placeholder="https://storybook.example.com/" value={url}
+                            onChange={(e) => setUrl(e.target.value)} />
+                    </div>
+                    <Button type="submit" disabled={load.isPending}>Load stories</Button>
+                </form>
+            </section>
             {stories.length > 0 && (
-                <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                <DetailCard label="Stories">
                     <div className="flex flex-wrap items-center gap-2">
                         <label htmlFor="sb-filter" className="sr-only">Filter stories</label>
-                        <Input id="sb-filter" className="w-64 h-9" placeholder="Filter stories" value={filter} onChange={(e) => setFilter(e.target.value)} />
+                        <Input id="sb-filter" className="h-9 w-64" placeholder="Filter stories" value={filter} onChange={(e) => setFilter(e.target.value)} />
                         <Button type="button" size="sm" variant="outline" onClick={() => setPicked([...new Set([...picked, ...visible.map(s => s.id)])])}>Select all shown</Button>
                         <Button type="button" size="sm" variant="outline" onClick={() => setPicked([])}>Clear selection</Button>
-                        <span className="text-xs text-slate-500">{picked.length} selected</span>
+                        <span className="text-xs font-semibold text-ink-soft">{picked.length} selected</span>
                     </div>
-                    <ul className="max-h-80 overflow-y-auto divide-y divide-slate-100 border border-slate-100 rounded-xl">
+                    <ul className="max-h-80 divide-y divide-[#F0EEE8] overflow-y-auto rounded-2xl border border-border">
                         {visible.map(s => (
                             <li key={s.id}>
-                                <label htmlFor={`story-${s.id}`} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer">
+                                <label htmlFor={`story-${s.id}`} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-ink hover:bg-background">
                                     <input id={`story-${s.id}`} type="checkbox" checked={picked.includes(s.id)}
                                         onChange={(e) => setPicked(toggle(picked, s.id, e.target.checked))} />
-                                    <span className="font-medium text-slate-800">{s.title}</span>
-                                    <span className="text-slate-500">/ {s.name}</span>
-                                    <code className="ml-auto text-[11px] text-slate-400">{s.id}</code>
+                                    <span className="font-semibold text-ink">{s.title}</span>
+                                    <span className="text-ink-soft">/ {s.name}</span>
+                                    <code className="ml-auto text-[11px] text-ink-soft">{s.id}</code>
                                 </label>
                             </li>
                         ))}
                     </ul>
-                    <div className="flex flex-wrap gap-4 items-end">
+                    <div className="flex flex-wrap items-end gap-4 border-t border-[#F0EEE8] pt-5">
                         <div className="space-y-1">
-                            <label htmlFor="sb-suite" className="text-sm font-medium text-slate-700">Add cases to suite</label>
-                            <select id="sb-suite" className="h-9 rounded-lg border border-slate-200 text-sm px-2 min-w-[14rem]"
+                            <label htmlFor="sb-suite" className="text-sm font-semibold text-ink">Add cases to suite</label>
+                            <select id="sb-suite" className="h-10 min-w-[14rem] rounded-full border border-border bg-white px-3 text-sm text-ink"
                                 value={suiteId} onChange={(e) => setSuiteId(e.target.value)}>
                                 <option value="">Choose a suite</option>
                                 {(suites.data as { id: number; name: string }[] | undefined || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         </div>
-                        <label htmlFor="sb-visual" className="flex items-center gap-2 text-sm">
+                        <label htmlFor="sb-visual" className="flex h-10 items-center gap-2 text-sm text-ink">
                             <input id="sb-visual" type="checkbox" checked={visual} onChange={(e) => setVisual(e.target.checked)} /> Visual match
                         </label>
-                        <label htmlFor="sb-a11y" className="flex items-center gap-2 text-sm">
+                        <label htmlFor="sb-a11y" className="flex h-10 items-center gap-2 text-sm text-ink">
                             <input id="sb-a11y" type="checkbox" checked={a11y} onChange={(e) => setA11y(e.target.checked)} /> Accessibility
                         </label>
                         <div className="space-y-1">
-                            <label htmlFor="sb-impact" className="text-sm font-medium text-slate-700">Fail at impact</label>
-                            <select id="sb-impact" className="h-9 rounded-lg border border-slate-200 text-sm px-2" value={impact}
+                            <label htmlFor="sb-impact" className="text-sm font-semibold text-ink">Fail at impact</label>
+                            <select id="sb-impact" className="h-10 rounded-full border border-border bg-white px-3 text-sm text-ink" value={impact}
                                 onChange={(e) => setImpact(e.target.value)} disabled={!a11y}>
                                 {['minor', 'moderate', 'serious', 'critical'].map(i => <option key={i} value={i}>{i}</option>)}
                             </select>
@@ -100,9 +103,9 @@ export default function StorybookPanel({ projectId }: { projectId: number }) {
                             onClick={() => generate.mutate()}>
                             Generate {picked.length} case{picked.length === 1 ? '' : 's'}
                         </Button>
-                        {suiteId && generate.isSuccess && <Link className="text-sm underline" to={`/suites/${suiteId}`}>Open suite</Link>}
+                        {suiteId && generate.isSuccess && <Link className="text-sm font-semibold text-ink underline underline-offset-2" to={`/suites/${suiteId}`}>Open suite</Link>}
                     </div>
-                </div>
+                </DetailCard>
             )}
         </div>
     );

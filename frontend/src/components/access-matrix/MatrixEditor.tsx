@@ -16,7 +16,7 @@ interface Props {
     onDeleted: () => void;
 }
 
-const lbl = 'block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1';
+const lbl = 'mb-1 block text-xs font-semibold uppercase tracking-[0.04em] text-ink-soft';
 
 export default function MatrixEditor({ projectId, matrix, onSaved, onDeleted }: Props) {
     const qc = useQueryClient();
@@ -72,24 +72,24 @@ export default function MatrixEditor({ projectId, matrix, onSaved, onDeleted }: 
                 </div>
             </div>
 
-            <fieldset className="rounded-xl border border-slate-200 bg-white p-4">
-                <legend className="px-1 text-sm font-bold text-slate-800">Identities (columns)</legend>
-                {personas.isLoading ? <p className="text-xs text-slate-400">Loading personas…</p>
-                    : personas.error ? <p className="text-xs text-rose-600">{errorDetail(personas.error)}</p>
+            <fieldset className="rounded-2xl border border-border p-4">
+                <legend className="px-1 text-sm font-semibold text-ink">Identities (columns)</legend>
+                {personas.isLoading ? <p className="text-xs text-ink-soft">Loading personas…</p>
+                    : personas.error ? <p className="text-xs text-pastel-ink-peach">{errorDetail(personas.error)}</p>
                     : (personas.data ?? []).length === 0 ? (
-                        <p className="text-xs text-slate-500">No personas in this project yet. Create personas (saved logged-in identities) to use them as columns.</p>
+                        <p className="text-xs text-ink-soft">No personas in this project yet. Create personas (saved logged-in identities) to use them as columns.</p>
                     ) : (
                         <div className="flex flex-wrap gap-x-5 gap-y-2">
                             {(personas.data ?? []).map(p => (
-                                <label key={p.id} className="flex items-center gap-2 text-sm text-slate-700">
+                                <label key={p.id} className="flex items-center gap-2 text-sm text-ink">
                                     <input type="checkbox" checked={draft.persona_ids.includes(p.id)}
                                         onChange={(e) => togglePersona(p.id, e.target.checked)} />
-                                    {p.name}{p.project_id === null && <span className="text-[10px] text-slate-400">(workspace)</span>}
+                                    {p.name}{p.project_id === null && <span className="text-[11px] text-ink-soft">(workspace)</span>}
                                 </label>
                             ))}
                         </div>
                     )}
-                <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                <label className="mt-3 flex items-center gap-2 text-sm text-ink">
                     <input type="checkbox" checked={draft.include_anonymous}
                         onChange={(e) => setDraft({ ...draft, include_anonymous: e.target.checked })} />
                     Anonymous column (no session, no credential headers)
@@ -102,17 +102,17 @@ export default function MatrixEditor({ projectId, matrix, onSaved, onDeleted }: 
             <Prerequisites projectId={projectId} rows={draft.rows} baseUrl={draft.base_url} columns={colKeys} />
 
             {error && (
-                <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 whitespace-pre-wrap">
+                <div role="alert" className="whitespace-pre-wrap rounded-2xl border border-border bg-background p-3 text-sm text-pastel-ink-peach">
                     {error}
                 </div>
             )}
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 border-t border-[#F0EEE8] pt-5">
                 <Button type="button" onClick={() => save.mutate()} disabled={save.isPending || !draft.name.trim()}>
                     {save.isPending ? 'Saving…' : matrix ? 'Save changes' : 'Create matrix'}
                 </Button>
                 {matrix && (
-                    <Button type="button" variant="outline" className="text-rose-700" disabled={remove.isPending}
+                    <Button type="button" variant="outline" disabled={remove.isPending}
                         onClick={() => {
                             if (window.confirm(`Delete "${matrix.name}" and all of its runs?`)) remove.mutate();
                         }}>

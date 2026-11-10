@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { BudgetPageSummary, BudgetSample, frontendQualityApi } from '@/api/frontendQuality';
+import { DetailCard, EmptyState, Eyebrow, ListGroup, ListRow, Pill, SplitView } from '@/components/redesign/primitives';
 import { formatMetric } from './matrixHelpers';
 
 const TREND_METRICS = ['lcp_ms', 'cls', 'inp_ms', 'ttfb_ms', 'page_weight_kb', 'request_count'] as const;
@@ -16,7 +17,7 @@ function MetricBars({ samples: all, metric }: { samples: BudgetSample[]; metric:
     const samples = all.slice(-MAX_BARS);
     const values = samples.map(s => s.metrics?.[metric]);
     const max = Math.max(...values.filter((v): v is number => typeof v === 'number'), 0);
-    if (!max) return <span className="text-xs text-slate-300">no data</span>;
+    if (!max) return <span className="text-xs text-ink-soft">no data</span>;
     return (
         <div className="mt-2 flex h-8 items-end gap-px" role="img"
             aria-label={`${metric} over the last ${samples.length} runs, latest ${formatMetric(metric, values[values.length - 1])}`}>
@@ -25,7 +26,7 @@ function MetricBars({ samples: all, metric }: { samples: BudgetSample[]; metric:
                 const over = s.checks?.some(c => c.metric === metric && !c.passed);
                 return (
                     <span key={s.id} title={`run #${s.test_run_id}: ${formatMetric(metric, v)}`}
-                        className={`block min-w-[2px] max-w-1.5 flex-1 rounded-sm ${over ? 'bg-rose-400' : 'bg-indigo-300'}`}
+                        className={`block min-w-[2px] max-w-1.5 flex-1 rounded-sm ${over ? 'bg-[#E0603A]' : 'bg-pastel-ink-lavender/40'}`}
                         style={{ height: `${typeof v === 'number' ? Math.max(6, (v / max) * 100) : 6}%` }} />
                 );
             })}
@@ -42,40 +43,40 @@ function Trend({ projectId, page }: { projectId: number; page: BudgetPageSummary
     const latest = page.latest;
     return (
         <div className="space-y-4">
-            <div className="grid sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3">
                 {TREND_METRICS.map(m => (
-                    <div key={m} className="border border-slate-200 rounded-xl p-3">
-                        <p className="text-[10px] uppercase tracking-wide text-slate-400 font-bold">{m.replace(/_/g, ' ')}</p>
-                        <p className="text-lg font-bold text-slate-800">{formatMetric(m, latest.metrics?.[m])}</p>
+                    <div key={m} className="rounded-2xl border border-border p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-ink-soft">{m.replace(/_/g, ' ')}</p>
+                        <p className="text-lg font-bold tabular-nums text-ink">{formatMetric(m, latest.metrics?.[m])}</p>
                         <MetricBars samples={samples} metric={m} />
                     </div>
                 ))}
             </div>
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid gap-4 md:grid-cols-2 [&>div]:rounded-2xl [&>div]:bg-background [&>div]:p-4">
                 <div>
-                    <h4 className="text-sm font-semibold text-slate-700 mb-2">Budgets (latest run)</h4>
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.04em] text-ink-soft">Budgets (latest run)</h4>
                     <ul className="text-sm space-y-1">
                         {(latest.checks || []).map(c => (
-                            <li key={c.metric} className={c.passed ? 'text-slate-600' : 'text-rose-600 font-semibold'}>
+                            <li key={c.metric} className={c.passed ? 'text-ink' : 'font-semibold text-pastel-ink-peach'}>
                                 {c.passed ? 'within' : 'over'}: {c.metric} {formatMetric(c.metric, c.value)} / budget {formatMetric(c.metric, c.budget)}
                             </li>
                         ))}
-                        {!latest.checks?.length && <li className="text-slate-400">No thresholds set on this step.</li>}
+                        {!latest.checks?.length && <li className="text-ink-soft">No thresholds set on this step.</li>}
                     </ul>
                 </div>
                 <div>
-                    <h4 className="text-sm font-semibold text-slate-700 mb-2">SEO checks (latest run)</h4>
+                    <h4 className="mb-2 text-xs font-semibold uppercase tracking-[0.04em] text-ink-soft">SEO checks (latest run)</h4>
                     <ul className="text-sm space-y-1">
                         {(latest.seo || []).map(c => (
-                            <li key={c.check} className={c.passed ? 'text-slate-600' : c.severity === 'error' ? 'text-rose-600' : 'text-amber-600'}>
+                            <li key={c.check} className={c.passed ? 'text-ink' : c.severity === 'error' ? 'text-pastel-ink-peach' : 'text-pastel-ink-butter'}>
                                 {c.passed ? 'ok' : c.severity}: {c.check.replace(/_/g, ' ')} — {c.detail}
                             </li>
                         ))}
                     </ul>
                 </div>
             </div>
-            <p className="text-xs text-slate-500">
-                Latest from <Link className="underline" to={`/runs/${latest.test_run_id}`}>run #{latest.test_run_id}</Link>
+            <p className="text-xs text-ink-soft">
+                Latest from <Link className="font-semibold text-ink underline underline-offset-2" to={`/runs/${latest.test_run_id}`}>run #{latest.test_run_id}</Link>
                 {latest.test_name ? ` (${latest.test_name})` : ''}.
             </p>
         </div>
@@ -89,33 +90,39 @@ export default function BudgetsPanel({ projectId }: { projectId: number }) {
     const key = (p: BudgetPageSummary) => `${p.page_key}|${p.variant ?? ''}`;
     const current = pages.find(p => key(p) === selected) || pages[0];
     return (
-        <div className="space-y-4">
-            <p className="text-sm text-slate-500 max-w-3xl">
+        <div className="flex flex-col gap-5">
+            <p className="rounded-3xl border border-border bg-white px-5 py-4 text-sm leading-relaxed text-ink-soft">
                 Add a <code>check-page-budget</code> step to a case to measure Core Web Vitals, page weight and SEO checks on that page
                 every run. Pages over budget in the last 30 days are listed first.
             </p>
-            {summary.isLoading && <p className="text-sm text-slate-500">Loading…</p>}
-            {pages.length === 0 && !summary.isLoading && <p className="text-sm text-slate-500">No page-budget samples yet.</p>}
+            {summary.isLoading && <div className="h-40 animate-pulse rounded-3xl bg-white/70" aria-busy="true" aria-label="Loading" />}
+            {pages.length === 0 && !summary.isLoading && <EmptyState title="No page-budget samples yet">They appear after a run that includes a check-page-budget step.</EmptyState>}
             {pages.length > 0 && (
-                <div className="grid lg:grid-cols-[minmax(16rem,22rem)_1fr] gap-4">
-                    <ul className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 self-start">
-                        {pages.map(p => (
-                            <li key={key(p)}>
-                                <button type="button" onClick={() => setSelected(key(p))}
-                                    className={`w-full text-left px-4 py-3 text-sm ${current && key(current) === key(p) ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
-                                    <span className="block break-all font-medium text-slate-800">{p.page_key}</span>
-                                    <span className="text-xs text-slate-500">{p.variant || 'default'} · {p.samples} sample(s)</span>
-                                    {p.failed > 0 && <span className="ml-2 text-xs font-semibold text-rose-600">{p.failed} over budget</span>}
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                    {current && (
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                <SplitView
+                    list={
+                        <ListGroup title="Pages" count={pages.length}>
+                            {pages.map(p => (
+                                <ListRow
+                                    key={key(p)}
+                                    selected={!!current && key(current) === key(p)}
+                                    onSelect={() => setSelected(key(p))}
+                                    title={<span className="break-all">{p.page_key}</span>}
+                                    meta={`${p.variant || 'default'} · ${p.samples} sample(s)`}
+                                    trailing={p.failed > 0 ? <Pill tone="peach">{p.failed} over budget</Pill> : undefined}
+                                />
+                            ))}
+                        </ListGroup>
+                    }
+                    detail={current && (
+                        <DetailCard label={`Page budget for ${current.page_key}`}>
+                            <div className="flex flex-col gap-1.5">
+                                <Eyebrow>{current.variant || 'default'} · {current.samples} sample(s)</Eyebrow>
+                                <h2 className="break-all text-[22px] font-bold leading-tight tracking-[-0.02em] text-ink">{current.page_key}</h2>
+                            </div>
                             <Trend projectId={projectId} page={current} />
-                        </div>
+                        </DetailCard>
                     )}
-                </div>
+                />
             )}
         </div>
     );

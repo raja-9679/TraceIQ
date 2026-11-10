@@ -53,36 +53,40 @@ function RevisionRow({ rev, caseId, isCurrent, onRestored }: {
     const steps: any[] = detail?.snapshot?.steps || [];
 
     return (
-        <div className={`border rounded-xl ${isCurrent ? 'border-indigo-200 bg-indigo-50/40' : 'border-slate-200 bg-white'}`}>
+        <div className={`border rounded-2xl ${isCurrent ? 'border-ink/20 bg-background' : 'border-border bg-white'}`}>
             <div className="flex items-center gap-3 px-4 py-3">
                 <button
+                    type="button"
                     onClick={() => setExpanded(!expanded)}
-                    className="text-slate-400 hover:text-slate-700 transition-colors shrink-0"
+                    aria-expanded={expanded}
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-xs font-medium text-ink-soft transition-colors hover:bg-secondary hover:text-ink"
                     title={expanded ? 'Collapse' : 'Show steps at this revision'}
                 >
-                    {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                    Steps
                 </button>
-                <span className="font-mono text-xs font-bold text-slate-500 shrink-0">#{rev.revision_number}</span>
+                <span className="font-mono text-xs font-bold text-ink-soft shrink-0">#{rev.revision_number}</span>
                 <SourceBadge source={rev.change_source} />
                 <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{rev.name || '(unnamed)'}</p>
-                    <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-ink truncate">{rev.name || '(unnamed)'}</p>
+                    <p className="text-xs text-ink-soft flex items-center gap-1.5">
                         {rev.changed_by_agent_id ? <Bot size={11} /> : <User size={11} />}
                         {rev.changed_by_agent_id || 'human'} · {rev.step_count ?? '?'} steps ·{' '}
                         {new Date(rev.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </p>
                 </div>
                 {isCurrent ? (
-                    <span className="text-[10px] font-bold uppercase text-indigo-600 shrink-0">Current</span>
+                    <span className="rounded-full bg-pastel-lavender px-2 py-0.5 text-[10px] font-bold uppercase text-pastel-ink-lavender shrink-0">Current</span>
                 ) : (
                     <button
+                        type="button"
                         onClick={() => {
                             if (window.confirm(`Restore the case to revision #${rev.revision_number}? The current state stays in history.`)) {
                                 restoreMutation.mutate();
                             }
                         }}
                         disabled={restoreMutation.isPending}
-                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-indigo-700 transition-colors disabled:opacity-50"
+                        className="shrink-0 flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-semibold text-ink border border-border bg-white hover:bg-background transition-colors disabled:opacity-50"
                     >
                         {restoreMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                         Restore
@@ -90,7 +94,7 @@ function RevisionRow({ rev, caseId, isCurrent, onRestored }: {
                 )}
             </div>
             {expanded && (
-                <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/50 rounded-b-xl">
+                <div className="border-t border-[#F0EEE8] px-4 py-3 bg-background/60 rounded-b-2xl">
                     {detailLoading ? (
                         <p className="text-xs text-slate-400">Loading snapshot…</p>
                     ) : steps.length === 0 ? (
@@ -133,32 +137,33 @@ export function CaseHistoryDialog({ caseId, onRestored }: {
             <button
                 type="button"
                 onClick={() => setOpen(true)}
-                className="text-xs font-semibold px-3 py-1.5 rounded-full border bg-white text-slate-500 border-slate-200 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-input bg-white px-5 text-sm font-medium text-ink transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20"
                 title="Revision history — every save is snapshotted; restore any earlier version"
             >
-                <History size={12} /> History
+                <History size={16} aria-hidden="true" /> History
             </button>
             {open && (
                 <div
-                    className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+                    className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
                     onClick={() => setOpen(false)}
                 >
                     <div
-                        className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col shadow-2xl border border-gray-100"
+                        role="dialog" aria-modal="true" aria-labelledby={`case-history-title-${caseId}`}
+                        className="bg-white rounded-3xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col shadow-[0_12px_40px_rgba(28,27,34,0.12)] border border-border"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center">
-                                    <History size={20} className="text-indigo-600" />
+                                <div className="w-10 h-10 rounded-full bg-pastel-lavender flex items-center justify-center" aria-hidden="true">
+                                    <History size={20} className="text-pastel-ink-lavender" />
                                 </div>
                                 <div>
-                                    <h3 className="text-lg font-bold text-gray-900">Revision History</h3>
-                                    <p className="text-xs text-slate-400">Every save is snapshotted — including AI edits. Restoring never deletes history.</p>
+                                    <h3 id={`case-history-title-${caseId}`} className="text-lg font-semibold text-ink">Revision History</h3>
+                                    <p className="text-xs text-ink-soft">Every save is snapshotted — including AI edits. Restoring never deletes history.</p>
                                 </div>
                             </div>
-                            <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-700 transition-colors">
-                                <X size={20} />
+                            <button type="button" onClick={() => setOpen(false)} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-white px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-background hover:text-ink">
+                                <X size={16} aria-hidden="true" /> Close
                             </button>
                         </div>
                         <div className="overflow-y-auto space-y-2 pr-1">

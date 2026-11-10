@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { pagesApi, type MonitoredPage, type PageScript } from '@/api/estates';
 import { Button } from '@/components/ui/button';
 import { errDetail } from '@/lib/errors';
-import { statusTone } from '@/components/estate/helpers';
+import { statusPill } from '@/components/estate/helpers';
+import { DetailCard, PanelTabs, Pill } from '@/components/redesign/primitives';
 import ChangeHistory from './ChangeHistory';
 import PageForm from './PageForm';
 import ScriptsTable from './ScriptsTable';
@@ -39,12 +40,19 @@ export default function PageView({ projectId, page, onDeleted }: Props) {
     const err = check.error || reset.error || remove.error || approve.error || revoke.error;
 
     return (
-        <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-xl font-bold text-slate-900">{page.name}</h2>
-                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${statusTone(page.last_status)}`}>
-                    {page.last_status ?? 'not checked'}</span>
-                <div className="ml-auto flex flex-wrap gap-2">
+        <DetailCard label={`Monitored page ${page.name}`}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex min-w-0 flex-col gap-1.5">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{page.name}</h2>
+                        <Pill tone={statusPill(page.last_status)}>{page.last_status ?? 'not checked'}</Pill>
+                    </div>
+                    <p className="break-all text-sm text-ink-soft">
+                        <span className="font-mono">{page.url}</span> · last checked {page.last_checked_at ? page.last_checked_at.slice(0, 16).replace('T', ' ') : 'never'}
+                        {page.last_similarity != null && ` · content similarity ${Math.round(page.last_similarity * 100)}%`}
+                    </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
                     <Button type="button" onClick={() => check.mutate()} disabled={check.isPending}>
                         {check.isSuccess ? 'Check queued' : 'Check now'}</Button>
                     {page.track_content && (
@@ -56,46 +64,44 @@ export default function PageView({ projectId, page, onDeleted }: Props) {
                     }}>Delete page</Button>
                 </div>
             </div>
-            <p className="break-all text-xs text-slate-500">
-                {page.url} · last checked {page.last_checked_at ? page.last_checked_at.slice(0, 16).replace('T', ' ') : 'never'}
-                {page.last_similarity != null && ` · content similarity ${Math.round(page.last_similarity * 100)}%`}
-            </p>
-            {page.last_error && <p role="alert" className="text-sm text-rose-700">{page.last_error}</p>}
-            {err && <p role="alert" className="text-sm text-rose-700">{errDetail(err)}</p>}
+            {page.last_error && <p role="alert" className="text-sm text-pastel-ink-peach">{page.last_error}</p>}
+            {err && <p role="alert" className="text-sm text-pastel-ink-peach">{errDetail(err)}</p>}
 
-            <div role="tablist" aria-label="Page views" className="flex gap-2">
-                {(['scripts', 'changes', 'settings'] as const).map(t => (
-                    <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
-                        className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === t ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>
-                        {t === 'scripts' ? 'Scripts' : t === 'changes' ? 'Change history' : 'Settings & defacement'}
-                    </button>
-                ))}
+            <div className="-mx-6 border-y border-[#F0EEE8] px-3 py-2 sm:-mx-7">
+                <PanelTabs
+                    label="Page views"
+                    value={tab}
+                    onChange={setTab}
+                    tabs={[
+                        { id: 'scripts', label: 'Scripts', count: page.script_count ?? undefined },
+                        { id: 'changes', label: 'Change history' },
+                        { id: 'settings', label: 'Settings & defacement' },
+                    ]}
+                />
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                {tab === 'scripts' && (
-                    <div className="space-y-3">
-                        <label className="flex items-center gap-2 text-xs text-slate-600">
-                            <input type="checkbox" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />
-                            Include removed scripts
-                        </label>
-                        {scripts.error ? <p role="alert" className="text-sm text-rose-700">{errDetail(scripts.error)}</p>
-                            : <ScriptsTable scripts={scripts.data ?? []} approvingId={approve.isPending ? approve.variables?.s.id ?? null : null}
-                                onApprove={(s, j) => approve.mutate({ s, j })} onRevoke={(s) => revoke.mutate(s)} />}
-                        {Object.keys(page.headers_baseline).length > 0 && (
-                            <details className="text-xs text-slate-600">
-                                <summary className="cursor-pointer font-medium">Security headers last seen</summary>
-                                <dl className="mt-1 space-y-0.5">
-                                    {Object.entries(page.headers_baseline).map(([k, v]) => (
-                                        <div key={k}><dt className="inline font-mono">{k}:</dt> <dd className="inline break-all">{v}</dd></div>
-                                    ))}
-                                </dl>
-                            </details>
-                        )}
-                    </div>
-                )}
-                {tab === 'changes' && <ChangeHistory changes={changes.data ?? []} />}
-                {tab === 'settings' && <PageForm key={page.id} projectId={projectId} page={page} onSaved={() => setTab('scripts')} />}
-            </div>
-        </div>
+            {tab === 'scripts' && (
+                <div className="flex flex-col gap-3">
+                    <label className="flex items-center gap-2 text-sm text-ink">
+                        <input type="checkbox" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />
+                        Include removed scripts
+                    </label>
+                    {scripts.error ? <p role="alert" className="text-sm text-pastel-ink-peach">{errDetail(scripts.error)}</p>
+                        : <ScriptsTable scripts={scripts.data ?? []} approvingId={approve.isPending ? approve.variables?.s.id ?? null : null}
+                            onApprove={(s, j) => approve.mutate({ s, j })} onRevoke={(s) => revoke.mutate(s)} />}
+                    {Object.keys(page.headers_baseline).length > 0 && (
+                        <details className="rounded-2xl bg-background p-4 text-xs text-ink">
+                            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.04em] text-ink-soft">Security headers last seen</summary>
+                            <dl className="mt-2 space-y-0.5">
+                                {Object.entries(page.headers_baseline).map(([k, v]) => (
+                                    <div key={k}><dt className="inline font-mono">{k}:</dt> <dd className="inline break-all">{v}</dd></div>
+                                ))}
+                            </dl>
+                        </details>
+                    )}
+                </div>
+            )}
+            {tab === 'changes' && <ChangeHistory changes={changes.data ?? []} />}
+            {tab === 'settings' && <PageForm key={page.id} projectId={projectId} page={page} onSaved={() => setTab('scripts')} />}
+        </DetailCard>
     );
 }

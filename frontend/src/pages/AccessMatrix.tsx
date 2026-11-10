@@ -1,47 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 import { accessMatrixApi } from '@/api/accessMatrix';
-import { getProjects } from '@/lib/api';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
+import { Button } from '@/components/ui/button';
+import {
+    DetailCard, EmptyState, PageHeader, PanelTabs, SplitView,
+} from '@/components/redesign/primitives';
 import MatrixEditor from '@/components/access-matrix/MatrixEditor';
 import MatrixList from '@/components/access-matrix/MatrixList';
 import RunsView from '@/components/access-matrix/RunsView';
 import { errorDetail } from '@/components/access-matrix/grid';
 
-// Thin shell: project picker + list + (editor | runs). Selection lives in the
-// URL (?matrix=&tab=&run=&cell=) so a finding or a teammate can deep-link to
-// one cell's evidence.
-
-function useActiveProject(): [number | null, (id: number) => void] {
-    const read = () => { const s = localStorage.getItem('activeProjectId'); return s ? parseInt(s) : null; };
-    const [projectId, setProjectId] = useState<number | null>(read);
-    useEffect(() => {
-        const h = () => setProjectId(read());
-        window.addEventListener('projectChanged', h);
-        return () => window.removeEventListener('projectChanged', h);
-    }, []);
-    const select = (id: number) => {
-        setProjectId(id);
-        localStorage.setItem('activeProjectId', id.toString());
-        window.dispatchEvent(new Event('projectChanged'));
-    };
-    return [projectId, select];
-}
+// Thin shell: list + (editor | runs) for the sidebar's active project.
+// Selection lives in the URL (?matrix=&tab=&run=&cell=) so a finding or a
+// teammate can deep-link to one cell's evidence.
 
 const num = (v: string | null) => (v && /^\d+$/.test(v) ? Number(v) : null);
 
 export default function AccessMatrixPage() {
-    const [projectId, selectProject] = useActiveProject();
+    const projectId = useActiveProjectId();
     const [params, setParams] = useSearchParams();
-    const projects = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
     const matrices = useQuery({
         queryKey: ['access-matrices', projectId],
         queryFn: () => accessMatrixApi.list(projectId!),
         enabled: !!projectId,
     });
 
+    // Switching project in the sidebar drops a selection that belonged to the
+    // previous project (the old in-page picker did the same). A deep link on
+    // first load is kept.
+    const lastProject = useRef(projectId);
+    useEffect(() => {
+        if (lastProject.current !== projectId) {
+            lastProject.current = projectId;
+            setParams(new URLSearchParams());
+        }
+    }, [projectId, setParams]);
+
     const sel = params.get('matrix');
-    const selectedId: number | 'new' | null = sel === 'new' ? 'new' : num(sel);
+    // Nothing in the URL → show the first matrix (same as Estate / Script
+    // inventory); the URL is only written when the user picks one.
+    const selectedId: number | 'new' | null = sel === 'new' ? 'new' : num(sel) ?? matrices.data?.[0]?.id ?? null;
     const tab = params.get('tab') === 'runs' ? 'runs' : 'edit';
     const matrix = typeof selectedId === 'number' ? matrices.data?.find(m => m.id === selectedId) ?? null : null;
 
@@ -53,54 +54,67 @@ export default function AccessMatrixPage() {
         setParams(p, { replace: false });
     };
 
+    const list = matrices.data ?? [];
+    const identities = (m: { persona_ids: number[]; include_anonymous: boolean }) => m.persona_ids.length + (m.include_anonymous ? 1 : 0);
+
     return (
-        <div className="max-w-[1400px] mx-auto pb-16">
-            <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60 flex flex-col sm:flex-row sm:items-end gap-4">
-                <div>
-                    <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Access Matrix</h1>
-                    <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-                        Declare who may reach what — targets × identities, allow or deny — and run it to catch
-                        broken access control and cross-tenant leaks.
-                    </p>
-                </div>
-                <div className="sm:ml-auto shrink-0">
-                    <label htmlFor="am-project" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project</label>
-                    <select id="am-project" className="h-10 w-[240px] rounded-xl border border-slate-200 bg-white px-3 text-sm"
-                        value={projectId ?? ''} onChange={(e) => { selectProject(Number(e.target.value)); setParams(new URLSearchParams()); }}>
-                        <option value="" disabled>Select a project</option>
-                        {(projects.data || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                </div>
-            </div>
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Access matrix"
+                subtitle={projectId && list.length
+                    ? `${list.length} matri${list.length === 1 ? 'x' : 'ces'} in this project · declare who may reach what, then run it to catch broken access control and cross-tenant leaks.`
+                    : 'Declare who may reach what — targets × identities, allow or deny — and run it to catch broken access control and cross-tenant leaks.'}
+                actions={projectId ? (
+                    <Button type="button" onClick={() => go({ matrix: 'new', tab: null, run: null, cell: null })}>
+                        <Plus className="h-4 w-4" /> New matrix
+                    </Button>
+                ) : undefined}
+            />
 
             {!projectId ? (
-                <p className="p-10 text-center bg-white border border-slate-200 rounded-2xl text-slate-500 text-sm">
-                    Select a project above to manage its access matrices.
-                </p>
+                <EmptyState title="Pick a project">Choose a project in the sidebar to manage its access matrices.</EmptyState>
             ) : matrices.error ? (
-                <p role="alert" className="text-sm text-rose-700">{errorDetail(matrices.error)}</p>
+                <EmptyState title="Couldn't load access matrices">{errorDetail(matrices.error)}</EmptyState>
+            ) : matrices.isLoading ? (
+                <div className="h-40 animate-pulse rounded-3xl bg-white/70" aria-busy="true" aria-label="Loading" />
             ) : (
-                <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-                    <MatrixList matrices={matrices.data ?? []} selectedId={selectedId}
-                        onSelect={(id) => go({ matrix: id, tab: null, run: null, cell: null })} />
-                    <div className="min-w-0">
-                        {selectedId === null ? (
-                            <p className="text-sm text-slate-500">Choose a matrix, or create a new one.</p>
+                <SplitView
+                    list={
+                        <MatrixList matrices={list} selectedId={selectedId}
+                            onSelect={(id) => go({ matrix: id, tab: null, run: null, cell: null })} />
+                    }
+                    detail={
+                        selectedId === null ? (
+                            <EmptyState title={list.length ? 'Choose a matrix' : 'No matrices yet'}>
+                                {list.length ? 'Pick a matrix on the left to edit its grid or see its runs.' : 'Use “New matrix” to declare your first set of targets and identities.'}
+                            </EmptyState>
                         ) : selectedId === 'new' ? (
-                            <MatrixEditor key={`new-${projectId}`} projectId={projectId} matrix={null}
-                                onSaved={(m) => go({ matrix: m.id })} onDeleted={() => go({ matrix: null })} />
+                            <DetailCard label="New access matrix">
+                                <div className="flex flex-col gap-1.5">
+                                    <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">New matrix</h2>
+                                    <span className="text-sm text-ink-soft">Rows are targets, columns are identities; each cell says whether that identity should get in.</span>
+                                </div>
+                                <MatrixEditor key={`new-${projectId}`} projectId={projectId} matrix={null}
+                                    onSaved={(m) => go({ matrix: m.id })} onDeleted={() => go({ matrix: null })} />
+                            </DetailCard>
                         ) : !matrix ? (
-                            <p className="text-sm text-slate-500">{matrices.isLoading ? 'Loading…' : 'Matrix not found in this project.'}</p>
+                            <EmptyState title="Matrix not found">This matrix is not in the selected project.</EmptyState>
                         ) : (
-                            <>
-                                <div role="tablist" aria-label="Matrix views" className="mb-4 flex gap-2">
-                                    {(['edit', 'runs'] as const).map(t => (
-                                        <button key={t} type="button" role="tab" aria-selected={tab === t}
-                                            onClick={() => go({ tab: t === 'edit' ? null : t })}
-                                            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === t ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>
-                                            {t === 'edit' ? 'Edit grid' : 'Runs & results'}
-                                        </button>
-                                    ))}
+                            <DetailCard label={`Access matrix ${matrix.name}`}>
+                                <div className="flex flex-col gap-1.5">
+                                    <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{matrix.name}</h2>
+                                    <span className="text-sm text-ink-soft">
+                                        {matrix.rows.length} row{matrix.rows.length === 1 ? '' : 's'} · {identities(matrix)} identit{identities(matrix) === 1 ? 'y' : 'ies'}
+                                        {matrix.description ? ` · ${matrix.description}` : ''}
+                                    </span>
+                                </div>
+                                <div className="-mx-6 border-y border-[#F0EEE8] px-3 py-2 sm:-mx-7">
+                                    <PanelTabs
+                                        label="Matrix views"
+                                        value={tab}
+                                        onChange={(t) => go({ tab: t === 'edit' ? null : t })}
+                                        tabs={[{ id: 'edit', label: 'Edit grid' }, { id: 'runs', label: 'Runs & results' }]}
+                                    />
                                 </div>
                                 {tab === 'edit' ? (
                                     <MatrixEditor key={`${matrix.id}-${matrix.updated_at}`} projectId={projectId} matrix={matrix}
@@ -109,10 +123,10 @@ export default function AccessMatrixPage() {
                                     <RunsView matrix={matrix} runId={num(params.get('run'))} cellId={num(params.get('cell'))}
                                         onSelect={(run, cell) => go({ tab: 'runs', run, cell })} />
                                 )}
-                            </>
-                        )}
-                    </div>
-                </div>
+                            </DetailCard>
+                        )
+                    }
+                />
             )}
         </div>
     );

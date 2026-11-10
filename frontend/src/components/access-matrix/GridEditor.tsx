@@ -20,11 +20,11 @@ export default function GridEditor({ rows, columns, personas, cases, onChange }:
     return (
         <div className="space-y-3">
             {columns.length === 0 ? (
-                <p className="text-sm text-slate-500">Choose at least one persona (or the Anonymous column) above to start the grid.</p>
+                <p className="rounded-2xl bg-background p-4 text-sm text-ink-soft">Choose at least one persona (or the Anonymous column) above to start the grid.</p>
             ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <div className="overflow-x-auto rounded-2xl border border-border bg-white">
                     <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                        <thead className="bg-background text-[11px] uppercase tracking-[0.04em] text-ink-soft">
                             <tr>
                                 <th scope="col" className="px-3 py-2 text-left font-semibold">Target</th>
                                 {columns.map(c => <th key={c.key} scope="col" className="px-2 py-2 text-center font-semibold">{c.label}</th>)}
@@ -32,10 +32,10 @@ export default function GridEditor({ rows, columns, personas, cases, onChange }:
                         </thead>
                         <tbody>
                             {rows.length === 0 && (
-                                <tr><td colSpan={columns.length + 1} className="px-3 py-6 text-center text-slate-400">No rows yet.</td></tr>
+                                <tr><td colSpan={columns.length + 1} className="px-3 py-6 text-center text-ink-soft">No rows yet.</td></tr>
                             )}
                             {rows.map((row, i) => (
-                                <tr key={row.key} className="border-t border-slate-100 align-top">
+                                <tr key={row.key} className="border-t border-[#F0EEE8] align-top">
                                     <td className="px-3 py-3">
                                         <RowEditor row={row} personas={personas} cases={cases}
                                             onChange={(r) => update(i, r)}

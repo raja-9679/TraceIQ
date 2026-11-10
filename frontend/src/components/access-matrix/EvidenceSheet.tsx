@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { accessMatrixApi, type MatrixCellResult, type MatrixRun } from '@/api/accessMatrix';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { columnLabel, expectedText, VERDICT_TONE } from './model';
+import { Pill } from '@/components/redesign/primitives';
+import { columnLabel, expectedText, VERDICT_PILL } from './model';
 import { errorDetail, failureKind, rowTargetText, VERDICT_LABEL } from './grid';
 
 interface Props {
@@ -11,7 +12,7 @@ interface Props {
     onClose: () => void;
 }
 
-const dt = 'text-[11px] font-semibold uppercase tracking-wide text-slate-500';
+const dt = 'text-[11px] font-semibold uppercase tracking-[0.04em] text-ink-soft';
 
 /** Evidence for one cell. Everything here was redacted on capture and again
  * on ingestion (redactAccessObservation / redact_access_observation). */
@@ -37,13 +38,13 @@ export default function EvidenceSheet({ run, cell, onClose }: Props) {
                             <SheetTitle>{row?.label || cell.row_key} as {who}</SheetTitle>
                             <SheetDescription className="font-mono text-xs break-all">{row ? rowTargetText(row) : ''}</SheetDescription>
                         </SheetHeader>
-                        <div className="mt-4 space-y-4 text-sm">
-                            <div className={`rounded-lg border p-3 ${VERDICT_TONE[cell.verdict]}`}>
-                                <div className="font-bold">
+                        <div className="mt-4 space-y-4 text-sm text-ink">
+                            <div className="flex flex-col gap-1.5 rounded-2xl border border-border p-3 text-ink">
+                                <Pill tone={VERDICT_PILL[cell.verdict]} className="self-start">
                                     {VERDICT_LABEL[cell.verdict]}{failureKind(cell.expect, cell.verdict) ? ` — ${failureKind(cell.expect, cell.verdict)}` : ''}
-                                </div>
-                                <div className="text-xs">Expected {expectedText(cell)}</div>
-                                {cell.reason && <div className="mt-1 text-xs">Reason: {cell.reason}</div>}
+                                </Pill>
+                                <div className="text-xs text-ink-soft">Expected {expectedText(cell)}</div>
+                                {cell.reason && <div className="text-xs text-ink-soft">Reason: {cell.reason}</div>}
                             </div>
 
                             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
@@ -60,7 +61,7 @@ export default function EvidenceSheet({ run, cell, onClose }: Props) {
                             </dl>
 
                             {testRunId && (
-                                <Link to={`/runs/${testRunId}`} className="inline-block text-xs font-medium text-indigo-600 hover:underline">
+                                <Link to={`/runs/${testRunId}`} className="inline-block text-xs font-semibold text-ink underline underline-offset-2">
                                     Open test run #{testRunId}
                                 </Link>
                             )}
@@ -68,7 +69,7 @@ export default function EvidenceSheet({ run, cell, onClose }: Props) {
                             {headers.length > 0 && (
                                 <section>
                                     <h4 className={dt}>Response headers (redacted)</h4>
-                                    <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-slate-50 p-2 text-[11px]">
+                                    <pre className="mt-1 max-h-48 overflow-auto rounded-xl bg-background p-2 text-[11px] text-ink">
                                         {headers.map(([k, v]) => `${k}: ${v}`).join('\n')}
                                     </pre>
                                 </section>
@@ -76,22 +77,22 @@ export default function EvidenceSheet({ run, cell, onClose }: Props) {
                             {obs?.body_excerpt && (
                                 <section>
                                     <h4 className={dt}>Body excerpt (redacted)</h4>
-                                    <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-slate-50 p-2 text-[11px]">{obs.body_excerpt}</pre>
+                                    <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-background p-2 text-[11px] text-ink">{obs.body_excerpt}</pre>
                                 </section>
                             )}
                             {obs?.screenshot && (
                                 <section>
                                     <h4 className={dt}>Screenshot</h4>
-                                    {shot.isLoading ? <p className="text-xs text-slate-400">Loading screenshot…</p>
-                                        : shot.error ? <p className="text-xs text-rose-600">{errorDetail(shot.error)}</p>
+                                    {shot.isLoading ? <p className="text-xs text-ink-soft">Loading screenshot…</p>
+                                        : shot.error ? <p className="text-xs text-pastel-ink-peach">{errorDetail(shot.error)}</p>
                                         : shot.data && (
                                             <a href={shot.data.url} target="_blank" rel="noreferrer">
-                                                <img src={shot.data.url} alt={`Page as ${who}`} className="mt-1 rounded-md border border-slate-200" />
+                                                <img src={shot.data.url} alt={`Page as ${who}`} className="mt-1 rounded-xl border border-border" />
                                             </a>
                                         )}
                                 </section>
                             )}
-                            {!obs && <p className="text-xs text-slate-500">No observation recorded yet.</p>}
+                            {!obs && <p className="text-xs text-ink-soft">No observation recorded yet.</p>}
                         </div>
                     </>
                 )}

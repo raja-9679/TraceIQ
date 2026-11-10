@@ -62,7 +62,7 @@ interface StepComponentProps {
     allowRunTest?: boolean;
 }
 
-const stepAction = 'inline-flex h-7 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40';
+const stepAction = 'inline-flex h-7 items-center gap-1 rounded-full border border-border bg-white px-2.5 text-[11px] font-medium text-ink-soft transition-colors hover:border-ink/20 hover:bg-background hover:text-ink disabled:pointer-events-none disabled:opacity-40';
 
 export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updateStep, removeStep, moveStep, insertStep, isFirst, isLast, pickerUrl, allowRunTest = true }) => {
     const [showPicker, setShowPicker] = React.useState(false);
@@ -193,14 +193,14 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
         <div className="relative group transition-all duration-300">
             {/* Timeline Connectors & Number Badge */}
             <div className="absolute left-[8px] sm:left-[24px] top-6 bottom-0 w-0.5 bg-slate-200 transition-colors group-hover:bg-indigo-100 -z-10 group-last:hidden" />
-            <div className="absolute left-0 sm:left-4 top-5 w-6 h-6 rounded-full bg-white border-2 border-slate-200 flex items-center justify-center shadow-sm z-10 transition-transform group-hover:scale-110 group-hover:border-indigo-400 group-hover:text-indigo-600 font-bold text-[10px] text-slate-400">
+            <div className="absolute left-0 sm:left-4 top-5 w-6 h-6 rounded-full bg-white border-2 border-border flex items-center justify-center z-10 transition-colors group-hover:border-ink group-hover:text-ink font-bold text-[10px] text-ink-soft">
                 {index + 1}
             </div>
 
             {/* Main Node Card */}
-            <div className={`ml-8 sm:ml-[60px] bg-white rounded-2xl border ${meta.border} shadow-sm transition-all hover:shadow-md hover:border-${meta.hue}-300 group overflow-visible relative`}>
+            <div className={`ml-8 sm:ml-[60px] bg-white rounded-2xl border ${(step.type as string) === '' ? 'border-dashed border-ink/25' : 'border-border'} transition-colors hover:border-ink/20 group overflow-visible relative`}>
                 {/* Node Header & Core Inputs */}
-                <div className={`flex flex-col md:flex-row p-1.5 gap-2 relative bg-gradient-to-r from-${meta.hue}-50/30 to-white rounded-t-2xl md:rounded-2xl`}>
+                <div className="flex flex-col md:flex-row p-1.5 gap-2 relative bg-background/60 rounded-t-2xl md:rounded-2xl">
                     {/* Action Selector Badge */}
                     <div className="relative w-full md:w-48 shrink-0">
                         <Select

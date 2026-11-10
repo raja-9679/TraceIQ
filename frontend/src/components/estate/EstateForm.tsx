@@ -39,31 +39,31 @@ export default function EstateForm({ projectId, estate, onSaved, onCancel }: Pro
         },
     });
 
-    const field = 'mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm';
+    const field = 'mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-ink';
     return (
-        <form className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4"
+        <form className="flex flex-col gap-4"
             onSubmit={(ev) => { ev.preventDefault(); save.mutate(); }}>
-            <h2 className="text-sm font-semibold text-slate-800">{estate ? 'Estate settings' : 'New estate'}</h2>
-            <label className="block text-xs font-medium text-slate-600">Name
+            {estate ? <h3 className="text-xs font-semibold uppercase tracking-[0.04em] text-ink-soft">Estate settings</h3> : <h3 className="sr-only">New estate</h3>}
+            <label className="block text-xs font-semibold text-ink-soft">Name
                 <input className={field} value={name} onChange={e => setName(e.target.value)} required maxLength={200} />
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-xs font-medium text-slate-600">Scan schedule (cron, UTC, at most hourly)
+                <label className="block text-xs font-semibold text-ink-soft">Scan schedule (cron, UTC, at most hourly)
                     <input className={field} value={cron} onChange={e => setCron(e.target.value)} />
                 </label>
-                <label className="block text-xs font-medium text-slate-600">Certificate alerts (days before expiry)
+                <label className="block text-xs font-semibold text-ink-soft">Certificate alerts (days before expiry)
                     <input className={field} value={alertDays} onChange={e => setAlertDays(e.target.value)} />
                 </label>
-                <label className="block text-xs font-medium text-slate-600">Extra DKIM selectors
+                <label className="block text-xs font-semibold text-ink-soft">Extra DKIM selectors
                     <input className={field} value={selectors} onChange={e => setSelectors(e.target.value)}
                         placeholder="brand2024, mailer" />
                 </label>
-                <label className="block text-xs font-medium text-slate-600">Alert emails
+                <label className="block text-xs font-semibold text-ink-soft">Alert emails
                     <input className={field} value={emails} onChange={e => setEmails(e.target.value)}
                         placeholder="secops@example.com" />
                 </label>
             </div>
-            <div className="flex flex-wrap gap-4 text-sm text-slate-700">
+            <div className="flex flex-wrap gap-4 text-sm text-ink">
                 <label className="flex items-center gap-2">
                     <input type="checkbox" checked={scheduled} onChange={e => setScheduled(e.target.checked)} />
                     Scheduled scans
@@ -73,7 +73,7 @@ export default function EstateForm({ projectId, estate, onSaved, onCancel }: Pro
                     Discover subdomains from certificate transparency
                 </label>
             </div>
-            {save.error && <p role="alert" className="text-sm text-rose-700">{errDetail(save.error)}</p>}
+            {save.error && <p role="alert" className="text-sm text-pastel-ink-peach">{errDetail(save.error)}</p>}
             <div className="flex gap-2">
                 <Button type="submit" disabled={save.isPending || !name.trim()}>{save.isPending ? 'Saving…' : 'Save estate'}</Button>
                 {onCancel && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}
