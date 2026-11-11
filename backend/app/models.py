@@ -757,6 +757,10 @@ class TestRunBase(SQLModel):
     # the target's base URL is this run's `target_url`.
     benchmark_group_id: Optional[int] = Field(
         default=None, foreign_key="benchmarkgroup.id", index=True)
+    # Test cycle (2026-11): the cycle this run was started for. Progress of a
+    # cycle is read from its runs' results; a run outlives its cycle.
+    cycle_id: Optional[int] = Field(
+        default=None, foreign_key="testcycle.id", index=True)
 
 
 class UserRead(SQLModel):
@@ -818,6 +822,7 @@ class TestCaseResultRead(SQLModel):
 
 class TestRunRead(TestRunBase):
     id: int
+    cycle_id: Optional[int] = None
     results: List[TestCaseResultRead] = []
     user: Optional[UserRead] = None
 
@@ -3521,6 +3526,9 @@ class ReleaseSignoff(SQLModel, table=True):
     note: Optional[str] = Field(default=None, sa_column=Column(Text))
     signed_by_id: int = Field(foreign_key="users.id")
     signed_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # The test cycle this decision closes, if it was made from one. Soft ref
+    # (no FK): the sign-off is evidence and stays when the cycle is deleted.
+    cycle_id: Optional[int] = Field(default=None, index=True)
 
 
 class ProjectCostBudget(SQLModel, table=True):
@@ -4215,3 +4223,41 @@ _install_audit_chain()
 # never running the migration). Without this a new deployment would get the
 # table and no guard.
 _install_audit_ddl()
+
+
+class TestCycle(SQLModel, table=True):
+    """A round of testing for one release of a project: a chosen set of cases
+    (manual and automated), who is expected to test each, and the runs made
+    for it (TestRun.cycle_id).
+
+    Nothing about progress is stored: a case's state in the cycle is read
+    from the newest result it has among the cycle's runs
+    (app/services/cycles.py), so a re-run, a deleted run or a retention sweep
+    can never leave a stale tick behind. The go / no-go is an ordinary
+    ReleaseSignoff carrying this cycle's id."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    release_label: Optional[str] = Field(default=None, index=True)
+    git_commit: Optional[str] = Field(default=None)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    status: str = Field(default="open", index=True)     # open | closed
+    start_date: Optional[date] = Field(default=None)
+    due_date: Optional[date] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    closed_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    closed_at: Optional[datetime] = Field(default=None)
+
+
+class TestCycleItem(SQLModel, table=True):
+    """One case in a cycle, and who is expected to test it."""
+    __table_args__ = (UniqueConstraint("cycle_id", "test_case_id", name="uq_testcycleitem_cycle_case"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    cycle_id: int = Field(foreign_key="testcycle.id", index=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    assignee_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    added_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)

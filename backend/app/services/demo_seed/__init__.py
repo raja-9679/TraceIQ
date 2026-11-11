@@ -71,7 +71,8 @@ class DemoContext:
 #: Run order. Order matters only where a module reads what an earlier one
 #: made: setup makes the members that security's access reviews snapshot.
 #: Tests narrow this (monkeypatch) to exercise one area on its own.
-MODULES = ("setup", "releases_reports", "proposals_ai", "tests_quality", "security", "collab")
+MODULES = ("setup", "releases_reports", "proposals_ai", "tests_quality", "security", "collab",
+           "cycles")
 
 
 async def seed_all(ctx: DemoContext) -> None:

@@ -5130,6 +5130,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/test-cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cycles */
+        get: operations["list_cycles_api_projects__project_id__test_cycles_get"];
+        put?: never;
+        /** Create Cycle */
+        post: operations["create_cycle_api_projects__project_id__test_cycles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/test-packs/{pack_id}/import": {
         parameters: {
             query?: never;
@@ -6787,6 +6805,158 @@ export interface paths {
         post: operations["add_user_to_team_api_teams__team_id__users__user_id__post"];
         /** Remove From Team */
         delete: operations["remove_from_team_api_teams__team_id__users__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/test-cycles/assigned-to-me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Cycles
+         * @description Open cycles in which the caller has cases assigned, with how many are
+         *     still to do. Project access is re-checked: losing it hides the cycle.
+         */
+        get: operations["my_cycles_api_test_cycles_assigned_to_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/test-cycles/{cycle_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cycle */
+        get: operations["get_cycle_api_test_cycles__cycle_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Cycle
+         * @description Removes the cycle and its case list. Its runs and their results stay
+         *     (unlinked), and so do sign-offs made from it — they are evidence.
+         */
+        delete: operations["delete_cycle_api_test_cycles__cycle_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Cycle */
+        patch: operations["update_cycle_api_test_cycles__cycle_id__patch"];
+        trace?: never;
+    };
+    "/api/test-cycles/{cycle_id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign */
+        put: operations["assign_api_test_cycles__cycle_id__assignments_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/test-cycles/{cycle_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Cycle */
+        post: operations["close_cycle_api_test_cycles__cycle_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/test-cycles/{cycle_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Items */
+        post: operations["add_items_api_test_cycles__cycle_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/test-cycles/{cycle_id}/items/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove Items */
+        post: operations["remove_items_api_test_cycles__cycle_id__items_remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/test-cycles/{cycle_id}/manual-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Manual
+         * @description One manual run per top-level suite for the cycle's manual cases (a
+         *     manual run belongs to a suite). Cases already waiting in an open manual
+         *     run of this cycle are left where they are, so pressing the button twice
+         *     does not hand the same case to two testers.
+         */
+        post: operations["start_manual_api_test_cycles__cycle_id__manual_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/test-cycles/{cycle_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen Cycle */
+        post: operations["reopen_cycle_api_test_cycles__cycle_id__reopen_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -8451,10 +8621,30 @@ export interface components {
             /** Justification */
             justification: string;
         };
+        /** Assign */
+        Assign: {
+            /** Assignee User Id */
+            assignee_user_id?: number | null;
+            /** Case Ids */
+            case_ids: number[];
+        };
         /** AssignRequest */
         AssignRequest: {
             /** Assignee User Id */
             assignee_user_id: number;
+        };
+        /** AssigneeProgress */
+        AssigneeProgress: {
+            assignee?: components["schemas"]["Person"] | null;
+            counts: components["schemas"]["Counts"];
+            /** Executed */
+            executed: number;
+            /** Percent Executed */
+            percent_executed?: number | null;
+            /** Percent Passed */
+            percent_passed?: number | null;
+            /** Total */
+            total: number;
         };
         /** AssignmentOut */
         AssignmentOut: {
@@ -9087,6 +9277,187 @@ export interface components {
             title?: string | null;
             /** Workspace Id */
             workspace_id: number;
+        };
+        /** Counts */
+        Counts: {
+            /**
+             * Blocked
+             * @default 0
+             */
+            blocked?: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed?: number;
+            /**
+             * Not Run
+             * @default 0
+             */
+            not_run?: number;
+            /**
+             * Passed
+             * @default 0
+             */
+            passed?: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped?: number;
+        };
+        /** CycleCreate */
+        CycleCreate: {
+            /** Case Ids */
+            case_ids?: number[] | null;
+            /** Description */
+            description?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Git Commit */
+            git_commit?: string | null;
+            /** Name */
+            name: string;
+            /** Release Label */
+            release_label?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Suite Id */
+            suite_id?: number | null;
+        };
+        /** CycleDetail */
+        CycleDetail: {
+            /**
+             * Assignees
+             * @default []
+             */
+            assignees?: components["schemas"]["AssigneeProgress"][];
+            /**
+             * Automated Cases
+             * @default 0
+             */
+            automated_cases?: number;
+            /**
+             * Can Edit
+             * @default false
+             */
+            can_edit?: boolean;
+            /** Closed At */
+            closed_at?: string | null;
+            closed_by?: components["schemas"]["Person"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            created_by?: components["schemas"]["Person"] | null;
+            /** Description */
+            description?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Git Commit */
+            git_commit?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Items
+             * @default []
+             */
+            items?: components["schemas"]["ItemOut"][];
+            /**
+             * Manual Cases
+             * @default 0
+             */
+            manual_cases?: number;
+            /** Name */
+            name: string;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue?: boolean;
+            progress: components["schemas"]["Progress"];
+            /** Project Id */
+            project_id: number;
+            /** Release Label */
+            release_label?: string | null;
+            /**
+             * Runs
+             * @default []
+             */
+            runs?: components["schemas"]["RunOut"][];
+            /**
+             * Runs Total
+             * @default 0
+             */
+            runs_total?: number;
+            signoff?: components["schemas"]["SignoffOut"] | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Status */
+            status: string;
+        };
+        /** CycleOut */
+        CycleOut: {
+            /**
+             * Automated Cases
+             * @default 0
+             */
+            automated_cases?: number;
+            /** Closed At */
+            closed_at?: string | null;
+            closed_by?: components["schemas"]["Person"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            created_by?: components["schemas"]["Person"] | null;
+            /** Description */
+            description?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Git Commit */
+            git_commit?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Manual Cases
+             * @default 0
+             */
+            manual_cases?: number;
+            /** Name */
+            name: string;
+            /**
+             * Overdue
+             * @default false
+             */
+            overdue?: boolean;
+            progress: components["schemas"]["Progress"];
+            /** Project Id */
+            project_id: number;
+            /** Release Label */
+            release_label?: string | null;
+            signoff?: components["schemas"]["SignoffOut"] | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Status */
+            status: string;
+        };
+        /** CyclePatch */
+        CyclePatch: {
+            /** Description */
+            description?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Git Commit */
+            git_commit?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Release Label */
+            release_label?: string | null;
+            /** Start Date */
+            start_date?: string | null;
         };
         /** Decision */
         Decision: {
@@ -9950,6 +10321,52 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** ItemOut */
+        ItemOut: {
+            assignee?: components["schemas"]["Person"] | null;
+            /** Case Id */
+            case_id: number;
+            /**
+             * Configurations
+             * @default 0
+             */
+            configurations?: number;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Priority */
+            priority?: string | null;
+            /** Result Id */
+            result_id?: number | null;
+            /** Root Suite Id */
+            root_suite_id?: number | null;
+            /** Run Id */
+            run_id?: number | null;
+            /** Status */
+            status: string;
+            /** Suite Id */
+            suite_id?: number | null;
+            /** Suite Name */
+            suite_name?: string | null;
+            /** Tested At */
+            tested_at?: string | null;
+            tested_by?: components["schemas"]["Person"] | null;
+        };
+        /** ItemsAdd */
+        ItemsAdd: {
+            /** Assignee User Id */
+            assignee_user_id?: number | null;
+            /** Case Ids */
+            case_ids?: number[] | null;
+            /** Suite Id */
+            suite_id?: number | null;
+        };
+        /** ItemsRemove */
+        ItemsRemove: {
+            /** Case Ids */
+            case_ids: number[];
+        };
         /** JourneyIn */
         JourneyIn: {
             /**
@@ -10092,6 +10509,8 @@ export interface components {
         ManualRunCreate: {
             /** Case Ids */
             case_ids?: number[] | null;
+            /** Cycle Id */
+            cycle_id?: number | null;
             /** Git Branch */
             git_branch?: string | null;
             /** Git Commit */
@@ -10100,6 +10519,34 @@ export interface components {
             release_label?: string | null;
             /** Suite Id */
             suite_id: number;
+        };
+        /** ManualStart */
+        ManualStart: {
+            /**
+             * Mine Only
+             * @default false
+             */
+            mine_only?: boolean;
+            /**
+             * Scope
+             * @default remaining
+             */
+            scope?: string;
+        };
+        /** ManualStarted */
+        ManualStarted: {
+            /**
+             * Already Open
+             * @default 0
+             */
+            already_open?: number;
+            /**
+             * Open Run Ids
+             * @default []
+             */
+            open_run_ids?: number[];
+            /** Runs */
+            runs: components["schemas"]["StartedRun"][];
         };
         /** MatrixRunRequest */
         MatrixRunRequest: {
@@ -10306,6 +10753,23 @@ export interface components {
             status: string;
             /** Test Name */
             test_name: string;
+        };
+        /** MyCycle */
+        MyCycle: {
+            /** Assigned */
+            assigned: number;
+            /** Cycle Id */
+            cycle_id: number;
+            /** Cycle Name */
+            cycle_name: string;
+            /** Due Date */
+            due_date?: string | null;
+            /** Project Id */
+            project_id: number;
+            /** Project Name */
+            project_name: string;
+            /** Remaining */
+            remaining: number;
         };
         /** NotificationList */
         NotificationList: {
@@ -10549,6 +11013,18 @@ export interface components {
              * @default []
              */
             warnings?: string[];
+        };
+        /** Progress */
+        Progress: {
+            counts: components["schemas"]["Counts"];
+            /** Executed */
+            executed: number;
+            /** Percent Executed */
+            percent_executed?: number | null;
+            /** Percent Passed */
+            percent_passed?: number | null;
+            /** Total */
+            total: number;
         };
         /** Project */
         Project: {
@@ -11370,6 +11846,8 @@ export interface components {
             case_ids?: number[] | null;
             /** Color Schemes */
             color_schemes?: string[] | null;
+            /** Cycle Id */
+            cycle_id?: number | null;
             /** Data Seed */
             data_seed?: string | number | null;
             /** Environment Id */
@@ -11419,6 +11897,32 @@ export interface components {
             results: {
                 [key: string]: components["schemas"]["ResultSummary"];
             };
+        };
+        /** RunOut */
+        RunOut: {
+            /** Browser */
+            browser?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Device */
+            device?: string | null;
+            /** Failed Tests */
+            failed_tests?: number | null;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Live */
+            live: boolean;
+            /** Passed Tests */
+            passed_tests?: number | null;
+            started_by?: components["schemas"]["Person"] | null;
+            /** Status */
+            status: string;
+            /** Suite Name */
+            suite_name?: string | null;
+            /** Total Tests */
+            total_tests?: number | null;
         };
         /**
          * RunReport
@@ -11814,14 +12318,34 @@ export interface components {
         SignoffIn: {
             /** Case Ids */
             case_ids?: number[] | null;
+            /** Cycle Id */
+            cycle_id?: number | null;
             /** Git Commit */
             git_commit?: string | null;
             /** Note */
             note?: string | null;
             /** Release Label */
             release_label: string;
-            /** Run Ids */
-            run_ids: number[];
+            /**
+             * Run Ids
+             * @default []
+             */
+            run_ids?: number[];
+            /** Verdict */
+            verdict: string;
+        };
+        /** SignoffOut */
+        SignoffOut: {
+            /** Id */
+            id: number;
+            /** Note */
+            note?: string | null;
+            /**
+             * Signed At
+             * Format: date-time
+             */
+            signed_at: string;
+            signed_by?: components["schemas"]["Person"] | null;
             /** Verdict */
             verdict: string;
         };
@@ -11978,6 +12502,15 @@ export interface components {
             latency_p95_ms?: number | null;
             /** Window Days */
             window_days?: number | null;
+        };
+        /** StartedRun */
+        StartedRun: {
+            /** Cases */
+            cases: number;
+            /** Id */
+            id: number;
+            /** Suite Name */
+            suite_name?: string | null;
         };
         /** StatusPageRead */
         StatusPageRead: {
@@ -12485,6 +13018,8 @@ export interface components {
              * Format: date-time
              */
             created_at?: string;
+            /** Cycle Id */
+            cycle_id?: number | null;
             /** Data Seed */
             data_seed?: string | null;
             /** Device */
@@ -24654,6 +25189,74 @@ export interface operations {
             };
         };
     };
+    list_cycles_api_projects__project_id__test_cycles_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_cycle_api_projects__project_id__test_cycles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CycleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     import_test_pack_api_projects__project_id__test_packs__pack_id__import_post: {
         parameters: {
             query?: never;
@@ -28440,6 +29043,325 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_cycles_api_test_cycles_assigned_to_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyCycle"][];
+                };
+            };
+        };
+    };
+    get_cycle_api_test_cycles__cycle_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cycle_api_test_cycles__cycle_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_cycle_api_test_cycles__cycle_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CyclePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_api_test_cycles__cycle_id__assignments_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Assign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_cycle_api_test_cycles__cycle_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_items_api_test_cycles__cycle_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemsAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_items_api_test_cycles__cycle_id__items_remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemsRemove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_manual_api_test_cycles__cycle_id__manual_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ManualStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualStarted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_cycle_api_test_cycles__cycle_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cycle_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CycleDetail"];
                 };
             };
             /** @description Validation Error */

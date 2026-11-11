@@ -294,14 +294,18 @@ async def _manual_release(ctx) -> Dict[str, Any]:
         project_id=web.id, release_label=RELEASE, git_commit=commit, run_ids=[first.id],
         verdict="reject", note="Both payment checks failed. Hold the release until they are re-tested.",
         signed_by_id=ctx.user.id, signed_at=first.finalized_at + timedelta(minutes=30)))
-    ctx.session.add(ReleaseSignoff(
+    approval = ReleaseSignoff(
         project_id=web.id, release_label=RELEASE, git_commit=commit,
         run_ids=[first.id, second.id], case_ids=[c["checkout"].id, c["mobile_layout"].id,
                                                  c["screen_reader"].id],
         verdict="approve",
         note="Upgrade re-tested and passing. Declined-card handling ships behind the billing flag; "
              "tracked in DEMO-104.",
-        signed_by_id=ctx.user.id, signed_at=second.finalized_at + timedelta(minutes=15)))
+        signed_by_id=ctx.user.id, signed_at=second.finalized_at + timedelta(minutes=15))
+    ctx.session.add(approval)
+    # The test-cycle demo (demo_seed/cycles.py) hangs these under one cycle.
+    ctx.extra["manual_runs"] = (first, second)
+    ctx.extra["manual_approval"] = approval
     ctx.extra["manual_suite"] = suite
     ctx.extra["manual_cases"] = cases
     return {"suite": suite, "cases": cases}

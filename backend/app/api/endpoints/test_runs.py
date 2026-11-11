@@ -78,6 +78,9 @@ class RunCreateContext(BaseModel):
     # exercises, {name: string | boolean}. Stored on the run, reported by
     # GET /projects/{id}/flag-coverage, and available to steps as {{flag.NAME}}.
     flags: Optional[Dict[str, Any]] = None
+    # Count this run towards a test cycle of the same project (must be open).
+    # The cycle's progress reads the results of its runs.
+    cycle_id: Optional[int] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -222,6 +225,10 @@ async def create_run(
                 status_code=400,
                 detail="app_build_id does not belong to this project")
         run_defaults["app_build_id"] = context.app_build_id
+
+    if context and context.cycle_id:
+        from app.api.manual_testing import open_cycle
+        run_defaults["cycle_id"] = (await open_cycle(session, context.cycle_id, suite.project_id)).id
 
     # Pin the run to a specific environment when requested; the dispatcher
     # falls back to the project's default environment when this is None.

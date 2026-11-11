@@ -20,7 +20,7 @@ describe('sidebar information architecture', () => {
 
     it('groups each former sidebar item under its place', () => {
         expect(names(place('Today').children)).toEqual(['Overview', 'Failure triage', 'Proposals', 'Flaky tests', 'Visual review']);
-        expect(names(place('Releases').children)).toEqual(['Quality gate', 'Release readiness', 'Release sign-off', 'Requirements', 'Traceability', 'Incidents']);
+        expect(names(place('Releases').children)).toEqual(['Quality gate', 'Release readiness', 'Test cycles', 'Release sign-off', 'Requirements', 'Traceability', 'Incidents']);
         expect(names(place('Reports').children)).toEqual([
             'Executive summary', 'Portfolio', 'Delivery (DORA)', 'SLOs', 'Flake trends', 'Dependencies',
             'Journey coverage', 'Business journeys', 'Flag coverage', 'Benchmarks', 'Costs', 'PoC report', 'Value report',
@@ -46,7 +46,7 @@ describe('sidebar information architecture', () => {
             ...places.flatMap((p) => p.children.map((c) => c.href)),
             ...setupLinks.map((l) => l.href),
         ];
-        expect(hrefs).toHaveLength(61);
+        expect(hrefs).toHaveLength(62);
         expect(new Set(hrefs).size).toBe(hrefs.length);
     });
 

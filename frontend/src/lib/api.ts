@@ -210,6 +210,10 @@ export interface RunContext {
     locales?: string[];
     color_schemes?: string[];
     reduced_motion?: boolean;
+    /** Targeted run: exactly these cases (all inside the suite). */
+    case_ids?: number[];
+    /** Count the run towards this test cycle. */
+    cycle_id?: number;
 }
 
 // browser/device are optional: when omitted the backend resolves the

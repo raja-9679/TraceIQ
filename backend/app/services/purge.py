@@ -144,6 +144,11 @@ PURGE_PLAN: List[PurgeStep] = [
               f"OR test_run_id IN ({_RUNS})"),
     PurgeStep("hypothesisfeedback",
               f"DELETE FROM hypothesisfeedback WHERE project_id IN ({_PROJECTS})"),
+    # Test cycles (2026-11): the case list goes before the cases; the cycle
+    # itself goes after its runs (testrun.cycle_id), further down.
+    PurgeStep("testcycleitem",
+              f"DELETE FROM testcycleitem WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_case_id IN ({_CASES})"),
     PurgeStep("flakerecord", f"DELETE FROM flakerecord WHERE test_case_id IN ({_CASES})"),
     # Reporting history (WP12b): flake trend snapshots, vendor roll-ups and
     # deployment events are the project's own derived data.
@@ -216,6 +221,8 @@ PURGE_PLAN: List[PurgeStep] = [
               f"DELETE FROM testschedule WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("testrun", f"DELETE FROM testrun WHERE project_id IN ({_PROJECTS})",
               label="runs"),
+    # After its runs (testrun.cycle_id).
+    PurgeStep("testcycle", f"DELETE FROM testcycle WHERE project_id IN ({_PROJECTS})"),
     # After its runs (testrun.benchmark_group_id), before suites (test_suite_id).
     PurgeStep("benchmarkgroup",
               f"DELETE FROM benchmarkgroup WHERE project_id IN ({_PROJECTS}) "

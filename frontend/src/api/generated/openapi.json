@@ -606,6 +606,35 @@
         "title": "ApproveIn",
         "type": "object"
       },
+      "Assign": {
+        "properties": {
+          "assignee_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee User Id"
+          },
+          "case_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 2000,
+            "minItems": 1,
+            "title": "Case Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case_ids"
+        ],
+        "title": "Assign",
+        "type": "object"
+      },
       "AssignRequest": {
         "properties": {
           "assignee_user_id": {
@@ -617,6 +646,60 @@
           "assignee_user_id"
         ],
         "title": "AssignRequest",
+        "type": "object"
+      },
+      "AssigneeProgress": {
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "executed": {
+            "title": "Executed",
+            "type": "integer"
+          },
+          "percent_executed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Executed"
+          },
+          "percent_passed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Passed"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "executed",
+          "counts"
+        ],
+        "title": "AssigneeProgress",
         "type": "object"
       },
       "AssignmentOut": {
@@ -2457,6 +2540,553 @@
           "workspace_id"
         ],
         "title": "ConversationCreate",
+        "type": "object"
+      },
+      "Counts": {
+        "properties": {
+          "blocked": {
+            "default": 0,
+            "title": "Blocked",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "not_run": {
+            "default": 0,
+            "title": "Not Run",
+            "type": "integer"
+          },
+          "passed": {
+            "default": 0,
+            "title": "Passed",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "title": "Counts",
+        "type": "object"
+      },
+      "CycleCreate": {
+        "properties": {
+          "case_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Ids"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "git_commit": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Commit"
+          },
+          "name": {
+            "maxLength": 120,
+            "title": "Name",
+            "type": "string"
+          },
+          "release_label": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Label"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "suite_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suite Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CycleCreate",
+        "type": "object"
+      },
+      "CycleDetail": {
+        "properties": {
+          "assignees": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssigneeProgress"
+            },
+            "title": "Assignees",
+            "type": "array"
+          },
+          "automated_cases": {
+            "default": 0,
+            "title": "Automated Cases",
+            "type": "integer"
+          },
+          "can_edit": {
+            "default": false,
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "closed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "git_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Commit"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "manual_cases": {
+            "default": 0,
+            "title": "Manual Cases",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "overdue": {
+            "default": false,
+            "title": "Overdue",
+            "type": "boolean"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/Progress"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "release_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Label"
+          },
+          "runs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RunOut"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "runs_total": {
+            "default": 0,
+            "title": "Runs Total",
+            "type": "integer"
+          },
+          "signoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignoffOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "status",
+          "created_at",
+          "progress"
+        ],
+        "title": "CycleDetail",
+        "type": "object"
+      },
+      "CycleOut": {
+        "properties": {
+          "automated_cases": {
+            "default": 0,
+            "title": "Automated Cases",
+            "type": "integer"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "closed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "git_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Commit"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "manual_cases": {
+            "default": 0,
+            "title": "Manual Cases",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "overdue": {
+            "default": false,
+            "title": "Overdue",
+            "type": "boolean"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/Progress"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "release_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Label"
+          },
+          "signoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignoffOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "status",
+          "created_at",
+          "progress"
+        ],
+        "title": "CycleOut",
+        "type": "object"
+      },
+      "CyclePatch": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "git_commit": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Commit"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "release_label": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Label"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          }
+        },
+        "title": "CyclePatch",
         "type": "object"
       },
       "Decision": {
@@ -5029,6 +5659,198 @@
         "title": "IssueTrackerConfigUpdate",
         "type": "object"
       },
+      "ItemOut": {
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "integer"
+          },
+          "configurations": {
+            "default": 0,
+            "title": "Configurations",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Id"
+          },
+          "root_suite_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Suite Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "suite_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suite Id"
+          },
+          "suite_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suite Name"
+          },
+          "tested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tested At"
+          },
+          "tested_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "case_id",
+          "name",
+          "kind",
+          "status"
+        ],
+        "title": "ItemOut",
+        "type": "object"
+      },
+      "ItemsAdd": {
+        "properties": {
+          "assignee_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee User Id"
+          },
+          "case_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Ids"
+          },
+          "suite_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suite Id"
+          }
+        },
+        "title": "ItemsAdd",
+        "type": "object"
+      },
+      "ItemsRemove": {
+        "properties": {
+          "case_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 2000,
+            "minItems": 1,
+            "title": "Case Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case_ids"
+        ],
+        "title": "ItemsRemove",
+        "type": "object"
+      },
       "JourneyIn": {
         "properties": {
           "case_ids": {
@@ -5456,6 +6278,17 @@
             ],
             "title": "Case Ids"
           },
+          "cycle_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Id"
+          },
           "git_branch": {
             "anyOf": [
               {
@@ -5501,6 +6334,51 @@
           "suite_id"
         ],
         "title": "ManualRunCreate",
+        "type": "object"
+      },
+      "ManualStart": {
+        "properties": {
+          "mine_only": {
+            "default": false,
+            "title": "Mine Only",
+            "type": "boolean"
+          },
+          "scope": {
+            "default": "remaining",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "title": "ManualStart",
+        "type": "object"
+      },
+      "ManualStarted": {
+        "properties": {
+          "already_open": {
+            "default": 0,
+            "title": "Already Open",
+            "type": "integer"
+          },
+          "open_run_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Open Run Ids",
+            "type": "array"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/StartedRun"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "ManualStarted",
         "type": "object"
       },
       "MatrixRunRequest": {
@@ -6041,6 +6919,56 @@
           "created_at"
         ],
         "title": "MyAssignment",
+        "type": "object"
+      },
+      "MyCycle": {
+        "properties": {
+          "assigned": {
+            "title": "Assigned",
+            "type": "integer"
+          },
+          "cycle_id": {
+            "title": "Cycle Id",
+            "type": "integer"
+          },
+          "cycle_name": {
+            "title": "Cycle Name",
+            "type": "string"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cycle_id",
+          "cycle_name",
+          "project_id",
+          "project_name",
+          "assigned",
+          "remaining"
+        ],
+        "title": "MyCycle",
         "type": "object"
       },
       "NotificationList": {
@@ -6679,6 +7607,50 @@
           "fields"
         ],
         "title": "PresetRead",
+        "type": "object"
+      },
+      "Progress": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "executed": {
+            "title": "Executed",
+            "type": "integer"
+          },
+          "percent_executed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Executed"
+          },
+          "percent_passed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Passed"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "executed",
+          "counts"
+        ],
+        "title": "Progress",
         "type": "object"
       },
       "Project": {
@@ -8897,6 +9869,17 @@
             ],
             "title": "Color Schemes"
           },
+          "cycle_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Id"
+          },
           "data_seed": {
             "anyOf": [
               {
@@ -9124,6 +10107,122 @@
           "results"
         ],
         "title": "RunDiscussion",
+        "type": "object"
+      },
+      "RunOut": {
+        "properties": {
+          "browser": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "failed_tests": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Tests"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "live": {
+            "title": "Live",
+            "type": "boolean"
+          },
+          "passed_tests": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed Tests"
+          },
+          "started_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "suite_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suite Name"
+          },
+          "total_tests": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Tests"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "live"
+        ],
+        "title": "RunOut",
         "type": "object"
       },
       "RunReport": {
@@ -10242,6 +11341,17 @@
             ],
             "title": "Case Ids"
           },
+          "cycle_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Id"
+          },
           "git_commit": {
             "anyOf": [
               {
@@ -10273,11 +11383,11 @@
             "type": "string"
           },
           "run_ids": {
+            "default": [],
             "items": {
               "type": "integer"
             },
             "maxItems": 50,
-            "minItems": 1,
             "title": "Run Ids",
             "type": "array"
           },
@@ -10288,10 +11398,54 @@
         },
         "required": [
           "release_label",
-          "run_ids",
           "verdict"
         ],
         "title": "SignoffIn",
+        "type": "object"
+      },
+      "SignoffOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "signed_at": {
+            "format": "date-time",
+            "title": "Signed At",
+            "type": "string"
+          },
+          "signed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "verdict",
+          "signed_at"
+        ],
+        "title": "SignoffOut",
         "type": "object"
       },
       "SiteCrawlIn": {
@@ -10643,6 +11797,35 @@
           }
         },
         "title": "SloTargets",
+        "type": "object"
+      },
+      "StartedRun": {
+        "properties": {
+          "cases": {
+            "title": "Cases",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "suite_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suite Name"
+          }
+        },
+        "required": [
+          "id",
+          "cases"
+        ],
+        "title": "StartedRun",
         "type": "object"
       },
       "StatusPageRead": {
@@ -12301,6 +13484,17 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "cycle_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Id"
           },
           "data_seed": {
             "anyOf": [
@@ -33393,6 +34587,128 @@
         ]
       }
     },
+    "/api/projects/{project_id}/test-cycles": {
+      "get": {
+        "operationId": "list_cycles_api_projects__project_id__test_cycles_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CycleOut"
+                  },
+                  "title": "Response List Cycles Api Projects  Project Id  Test Cycles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Cycles",
+        "tags": [
+          "test-cycles"
+        ]
+      },
+      "post": {
+        "operationId": "create_cycle_api_projects__project_id__test_cycles_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CycleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Cycle",
+        "tags": [
+          "test-cycles"
+        ]
+      }
+    },
     "/api/projects/{project_id}/test-packs/{pack_id}/import": {
       "post": {
         "operationId": "import_test_pack_api_projects__project_id__test_packs__pack_id__import_post",
@@ -39896,6 +41212,509 @@
         "summary": "Add User To Team",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/test-cycles/assigned-to-me": {
+      "get": {
+        "description": "Open cycles in which the caller has cases assigned, with how many are\nstill to do. Project access is re-checked: losing it hides the cycle.",
+        "operationId": "my_cycles_api_test_cycles_assigned_to_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyCycle"
+                  },
+                  "title": "Response My Cycles Api Test Cycles Assigned To Me Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "My Cycles",
+        "tags": [
+          "test-cycles"
+        ]
+      }
+    },
+    "/api/test-cycles/{cycle_id}": {
+      "delete": {
+        "description": "Removes the cycle and its case list. Its runs and their results stay\n(unlinked), and so do sign-offs made from it — they are evidence.",
+        "operationId": "delete_cycle_api_test_cycles__cycle_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "required": true,
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Delete Cycle",
+        "tags": [
+          "test-cycles"
+        ]
+      },
+      "get": {
+        "operationId": "get_cycle_api_test_cycles__cycle_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "required": true,
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Cycle",
+        "tags": [
+          "test-cycles"
+        ]
+      },
+      "patch": {
+        "operationId": "update_cycle_api_test_cycles__cycle_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "required": true,
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CyclePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Cycle",
+        "tags": [
+          "test-cycles"
+        ]
+      }
+    },
+    "/api/test-cycles/{cycle_id}/assignments": {
+      "put": {
+        "operationId": "assign_api_test_cycles__cycle_id__assignments_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "required": true,
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Assign"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Assign",
+        "tags": [
+          "test-cycles"
+        ]
+      }
+    },
+    "/api/test-cycles/{cycle_id}/close": {
+      "post": {
+        "operationId": "close_cycle_api_test_cycles__cycle_id__close_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "required": true,
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Close Cycle",
+        "tags": [
+          "test-cycles"
+        ]
+      }
+    },
+    "/api/test-cycles/{cycle_id}/items": {
+      "post": {
+        "operationId": "add_items_api_test_cycles__cycle_id__items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "required": true,
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemsAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Add Items",
+        "tags": [
+          "test-cycles"
+        ]
+      }
+    },
+    "/api/test-cycles/{cycle_id}/items/remove": {
+      "post": {
+        "operationId": "remove_items_api_test_cycles__cycle_id__items_remove_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "required": true,
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemsRemove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Remove Items",
+        "tags": [
+          "test-cycles"
+        ]
+      }
+    },
+    "/api/test-cycles/{cycle_id}/manual-runs": {
+      "post": {
+        "description": "One manual run per top-level suite for the cycle's manual cases (a\nmanual run belongs to a suite). Cases already waiting in an open manual\nrun of this cycle are left where they are, so pressing the button twice\ndoes not hand the same case to two testers.",
+        "operationId": "start_manual_api_test_cycles__cycle_id__manual_runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "required": true,
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualStart",
+                "default": {
+                  "mine_only": false,
+                  "scope": "remaining"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Start Manual",
+        "tags": [
+          "test-cycles"
+        ]
+      }
+    },
+    "/api/test-cycles/{cycle_id}/reopen": {
+      "post": {
+        "operationId": "reopen_cycle_api_test_cycles__cycle_id__reopen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cycle_id",
+            "required": true,
+            "schema": {
+              "title": "Cycle Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CycleDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Reopen Cycle",
+        "tags": [
+          "test-cycles"
         ]
       }
     },

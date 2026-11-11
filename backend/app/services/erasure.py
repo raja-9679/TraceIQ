@@ -111,6 +111,11 @@ RETAINED_AUTHORSHIP: List[str] = [
     "resultassignment.assigned_by_id", "resultassignment.done_by_id",
     # Who caused someone ELSE's notification (the row belongs to its reader).
     "notification.actor_id",
+    # Test cycles: who planned / closed a cycle and who was asked to test a
+    # case are the project's release record; an item assigned to the scrubbed
+    # account stays visible so it can be given to someone else.
+    "testcycle.created_by_id", "testcycle.closed_by_id",
+    "testcycleitem.assignee_id", "testcycleitem.added_by_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {

@@ -44,6 +44,8 @@ import Costs from "@/pages/Costs";
 import ManualCaseEditor from "@/pages/ManualCaseEditor";
 import ManualRun from "@/pages/ManualRun";
 import ReleaseSignoff from "@/pages/ReleaseSignoff";
+import TestCycles from "@/pages/TestCycles";
+import TestCycleDetail from "@/pages/TestCycleDetail";
 import PublicStatus from "@/pages/PublicStatus";
 import PublicShare from "@/pages/PublicShare";
 import PublicTrust from "@/pages/PublicTrust";
@@ -134,6 +136,8 @@ function App() {
                 <Route path="billing" element={<Billing />} />
                 <Route path="ai-usage" element={<LLMUsage />} />
                 <Route path="costs" element={<Costs />} />
+                <Route path="test-cycles" element={<TestCycles />} />
+                <Route path="test-cycles/:cycleId" element={<TestCycleDetail />} />
                 <Route path="release-signoff" element={<ReleaseSignoff />} />
                 <Route path="manual-runs/:runId" element={<ManualRun />} />
                 <Route path="suites/:suiteId/manual/new" element={<ManualCaseEditor />} />

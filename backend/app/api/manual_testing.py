@@ -96,6 +96,7 @@ def _run_view(run: TestRun, results: List[TestCaseResult],
         "executor": "manual", "user_id": run.user_id, "created_at": run.created_at,
         "finalized_at": run.finalized_at, "git_commit": run.git_commit,
         "git_branch": run.git_branch, "release_label": (run.domain_settings or {}).get("release_label"),
+        "cycle_id": run.cycle_id,
         "summary": mt.summarize(outcomes),
         "results": [_result_view(r, names) for r in results],
     }
@@ -129,6 +130,64 @@ class ManualRunCreate(BaseModel):
     release_label: Optional[str] = Field(default=None, max_length=mt.MAX_RELEASE_LABEL)
     git_commit: Optional[str] = Field(default=None, max_length=64)
     git_branch: Optional[str] = Field(default=None, max_length=255)
+    # Count this run towards a test cycle of the same project (must be open).
+    cycle_id: Optional[int] = None
+
+
+async def open_cycle(session: AsyncSession, cycle_id: Optional[int], project_id: Optional[int]):
+    """The open cycle a new run may join. Another project's cycle is "not
+    found": whether that id exists elsewhere is not the caller's business."""
+    if not cycle_id:
+        return None
+    from app.models import TestCycle
+    cycle = await session.get(TestCycle, cycle_id)
+    if not cycle or cycle.project_id != project_id:
+        raise HTTPException(status_code=400, detail="Test cycle not found in this project")
+    if cycle.status != "open":
+        raise HTTPException(status_code=409, detail="This test cycle is closed — reopen it to add runs")
+    return cycle
+
+
+async def create_manual_run(session: AsyncSession, principal: AuthPrincipal, request: Optional[Request],
+                            suite: TestSuite, chosen: List[TestCase], *, targeted: bool,
+                            selection_total: int, release_label: Optional[str] = None,
+                            git_commit: Optional[str] = None, git_branch: Optional[str] = None,
+                            cycle_id: Optional[int] = None) -> TestRun:
+    """Create the PENDING manual run and one result per case. Adds and
+    flushes; the caller commits. Shared by POST /manual-runs and a test
+    cycle's "start manual testing"."""
+    label = (release_label or "").strip()
+    single = chosen[0] if len(chosen) == 1 else None
+    run = TestRun(
+        test_suite_id=suite.id, project_id=suite.project_id, suite_name=suite.name,
+        test_case_id=single.id if single and targeted else None,
+        test_case_name=single.name if single and targeted else None,
+        executor=ExecutorType.MANUAL, status=TestStatus.PENDING, browser="manual",
+        total_tests=len(chosen), user_id=principal.user.id,
+        triggered_by=RunTrigger.API_AGENT if principal.is_api_caller else RunTrigger.HUMAN,
+        api_key_id=principal.api_key.id if principal.api_key else None,
+        selection_mode="targeted" if targeted else "full", selection_total=selection_total,
+        git_commit=(git_commit or "").strip() or None,
+        git_branch=(git_branch or "").strip() or None,
+        cycle_id=cycle_id,
+        # domain_settings is free-form run metadata the UI already shows; the
+        # release label rides there rather than in a new column.
+        domain_settings={"release_label": label} if label else {},
+    )
+    session.add(run)
+    await session.flush()
+    for case in chosen:
+        session.add(TestCaseResult(
+            test_run_id=run.id, test_case_id=case.id, test_name=case.name,
+            status=TestStatus.PENDING, duration_ms=0, result_kind=mt.RESULT_KIND,
+            # Snapshot the steps: the case may be edited while (or after) it is
+            # being tested, and the record must show what the tester followed.
+            result_payload={"outcome": None, "steps": _steps_snapshot(case)}))
+    await audit_record(session, entity_type="manual_run", entity_id=run.id, action="start",
+                       principal=principal, request=request,
+                       changes={"suite_id": suite.id, "cases": len(chosen),
+                                "release_label": label or None, "cycle_id": cycle_id})
+    return run
 
 
 @router.post("/manual-runs")
@@ -159,35 +218,13 @@ async def start_manual_run(body: ManualRunCreate, request: Request,
     if not chosen:
         raise HTTPException(status_code=400, detail="This suite has no manual test cases")
 
-    single = chosen[0] if len(chosen) == 1 else None
-    run = TestRun(
-        test_suite_id=suite.id, project_id=suite.project_id, suite_name=suite.name,
-        test_case_id=single.id if single and body.case_ids else None,
-        test_case_name=single.name if single and body.case_ids else None,
-        executor=ExecutorType.MANUAL, status=TestStatus.PENDING, browser="manual",
-        total_tests=len(chosen), user_id=principal.user.id,
-        triggered_by=RunTrigger.API_AGENT if principal.is_api_caller else RunTrigger.HUMAN,
-        api_key_id=principal.api_key.id if principal.api_key else None,
-        selection_mode="targeted" if body.case_ids else "full", selection_total=len(manual),
-        git_commit=(body.git_commit or "").strip() or None,
-        git_branch=(body.git_branch or "").strip() or None,
-        # domain_settings is free-form run metadata the UI already shows; the
-        # release label rides there rather than in a new column.
-        domain_settings={"release_label": (body.release_label or "").strip()} if body.release_label else {},
-    )
-    session.add(run)
-    await session.flush()
-    for case in chosen:
-        session.add(TestCaseResult(
-            test_run_id=run.id, test_case_id=case.id, test_name=case.name,
-            status=TestStatus.PENDING, duration_ms=0, result_kind=mt.RESULT_KIND,
-            # Snapshot the steps: the case may be edited while (or after) it is
-            # being tested, and the record must show what the tester followed.
-            result_payload={"outcome": None, "steps": _steps_snapshot(case)}))
-    await audit_record(session, entity_type="manual_run", entity_id=run.id, action="start",
-                       principal=principal, request=request,
-                       changes={"suite_id": suite.id, "cases": len(chosen),
-                                "release_label": body.release_label})
+    cycle = await open_cycle(session, body.cycle_id, suite.project_id)
+    run = await create_manual_run(
+        session, principal, request, suite, chosen, targeted=bool(body.case_ids),
+        selection_total=len(manual),
+        release_label=body.release_label or (cycle.release_label if cycle else None),
+        git_commit=body.git_commit or (cycle.git_commit if cycle else None),
+        git_branch=body.git_branch, cycle_id=cycle.id if cycle else None)
     await session.commit()
     return await _view(session, run, await _results(session, run.id))
 
@@ -370,7 +407,10 @@ async def list_manual_runs(project_id: int, limit: int = 50,
 
 class SignoffIn(BaseModel):
     release_label: str = Field(min_length=1, max_length=mt.MAX_RELEASE_LABEL)
-    run_ids: List[int] = Field(min_length=1, max_length=mt.MAX_SIGNOFF_RUNS)
+    # Required, except with cycle_id: then the runs that hold each case's
+    # current result in the cycle are used.
+    run_ids: List[int] = Field(default=[], max_length=mt.MAX_SIGNOFF_RUNS)
+    cycle_id: Optional[int] = None
     case_ids: Optional[List[int]] = Field(default=None, max_length=1000)
     verdict: str
     note: Optional[str] = Field(default=None, max_length=mt.MAX_NOTES)
@@ -380,6 +420,7 @@ class SignoffIn(BaseModel):
 def _signoff_view(s: ReleaseSignoff, names: Dict[int, str]) -> Dict[str, Any]:
     return {"id": s.id, "project_id": s.project_id, "release_label": s.release_label,
             "git_commit": s.git_commit, "run_ids": s.run_ids or [], "case_ids": s.case_ids,
+            "cycle_id": s.cycle_id,
             "verdict": s.verdict, "note": s.note, "signed_by_id": s.signed_by_id,
             "signed_by_name": names.get(s.signed_by_id), "signed_at": s.signed_at}
 
@@ -421,6 +462,20 @@ async def create_signoff(project_id: int, body: SignoffIn, request: Request,
         raise HTTPException(status_code=400, detail="release_label is required")
 
     run_ids = list(dict.fromkeys(body.run_ids))
+    cycle = None
+    if body.cycle_id:
+        from app.models import TestCycle
+        cycle = await session.get(TestCycle, body.cycle_id)
+        if not cycle or cycle.project_id != project.id:
+            raise HTTPException(status_code=400, detail="Test cycle not found in this project")
+        if not run_ids:
+            from app.api.cycles import evidence_run_ids
+            run_ids = (await evidence_run_ids(session, cycle))[:mt.MAX_SIGNOFF_RUNS]
+            if not run_ids:
+                raise HTTPException(status_code=409, detail=(
+                    "Nothing in this cycle has a result yet — there is nothing to sign off"))
+    if not run_ids:
+        raise HTTPException(status_code=400, detail="run_ids is required")
     runs = list((await session.exec(select(TestRun).where(TestRun.id.in_(run_ids)))).all())
     # Runs of another project are refused as "not found", not "forbidden":
     # whether some id exists elsewhere is not this caller's business.
@@ -461,7 +516,7 @@ async def create_signoff(project_id: int, body: SignoffIn, request: Request,
     signoff = ReleaseSignoff(
         project_id=project.id, release_label=label, git_commit=commit, run_ids=run_ids,
         case_ids=case_ids, verdict=body.verdict, note=(body.note or "").strip() or None,
-        signed_by_id=principal.user.id)
+        signed_by_id=principal.user.id, cycle_id=cycle.id if cycle else None)
     session.add(signoff)
     await session.flush()
     await audit_record(session, entity_type="release_signoff", entity_id=signoff.id,
@@ -469,6 +524,7 @@ async def create_signoff(project_id: int, body: SignoffIn, request: Request,
                        workspace_id=project.workspace_id,
                        changes={"project_id": project.id, "release_label": label,
                                 "run_ids": run_ids, "case_ids": case_ids, "git_commit": commit,
+                                "cycle_id": cycle.id if cycle else None,
                                 "separate_approver_required": required})
     await session.commit()
     await session.refresh(signoff)

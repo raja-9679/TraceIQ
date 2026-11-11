@@ -66,10 +66,11 @@ export const places: Place[] = [
     {
         name: 'Releases', href: '/quality', icon: Flag, tone: 'mint',
         // Requirements → cases → incidents is the trace chain a release is judged on.
-        match: ['/quality', '/release-readiness', '/release-signoff', '/requirements', '/traceability', '/incidents'],
+        match: ['/quality', '/release-readiness', '/test-cycles', '/test-cycles/:cycleId', '/release-signoff', '/requirements', '/traceability', '/incidents'],
         children: [
             { name: 'Quality gate', href: '/quality' },
             { name: 'Release readiness', href: '/release-readiness' },
+            { name: 'Test cycles', href: '/test-cycles' },
             { name: 'Release sign-off', href: '/release-signoff' },
             { name: 'Requirements', href: '/requirements' },
             { name: 'Traceability', href: '/traceability' },

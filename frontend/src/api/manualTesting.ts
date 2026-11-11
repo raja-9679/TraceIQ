@@ -109,6 +109,8 @@ export const manualTestingApi = {
         (await api.get(`/projects/${projectId}/signoffs`)).data,
     signOff: async (projectId: number, body: {
         release_label: string; run_ids: number[]; verdict: SignoffVerdict; note?: string; git_commit?: string;
+        /** Sign off a test cycle; with no run_ids the cycle's current results are covered. */
+        cycle_id?: number;
     }): Promise<ReleaseSignoff> => (await api.post(`/projects/${projectId}/signoffs`, body)).data,
     artifactUrl: async (key: string): Promise<string> => (await api.get(`/artifacts/${key}`)).data.url,
 };

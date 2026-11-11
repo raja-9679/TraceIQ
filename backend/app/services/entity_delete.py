@@ -136,6 +136,9 @@ ON_DELETE: Dict[str, str] = {
     "resultcomment.project_id": DELETE,
     "resultassignment.project_id": DELETE,
     "notification.project_id": DELETE,
+    # Test cycles (2026-11): a cycle is the project's plan for a release.
+    "testcycle.project_id": DELETE,
+    "testcycleitem.project_id": DELETE,
     # Reporting (WP12c): imports, path rules, journeys, flag catalogue and
     # benchmark groups are all project data.
     "journeyimport.project_id": DELETE,
@@ -175,6 +178,7 @@ ON_DELETE: Dict[str, str] = {
     "testcaserevision.test_case_id": DELETE,
     "visualbaseline.test_case_id": DELETE,
     "flakerecord.test_case_id": DELETE,
+    "testcycleitem.test_case_id": DELETE,   # a deleted case leaves its cycles
     "flakecasescoredaily.test_case_id": DELETE,  # that case's score history
     "selectorhealproposal.test_case_id": DELETE,  # a proposal to edit the case
     "caseproposal.target_case_id": DELETE,  # update/delete of a case that's gone
@@ -251,6 +255,8 @@ ON_DELETE: Dict[str, str] = {
     "testrun.environment_id": NULLIFY,      # a run outlives an environment
     "deployment.environment_id": NULLIFY,   # a deployment record outlives it too
     "testrun.benchmark_group_id": NULLIFY,  # a run outlives its benchmark group
+    "testrun.cycle_id": NULLIFY,            # ... and its test cycle
+    "testcycleitem.cycle_id": DELETE,
     "testcaseresult.cluster_id": NULLIFY,   # a result outlives its cluster
 }
 
