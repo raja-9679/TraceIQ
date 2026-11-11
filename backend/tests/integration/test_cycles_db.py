@@ -359,6 +359,20 @@ async def test_sign_off_from_a_cycle(maker, client):
     assert r.json()["run_ids"] == [new] and r.json()["cycle_id"] == c["id"] and old != new
     d = (await client.get(f"/api/test-cycles/{c['id']}", headers=sc["VEE"])).json()
     assert d["signoff"]["verdict"] == "approve" and d["signoff"]["signed_by"]["name"] == "Sam"
+    # A caller cannot pick the runs of a cycle sign-off (e.g. only the green ones).
+    assert (await client.post(url, headers=sc["SAM"], json={**body, "run_ids": [new]})).status_code == 400
+    # Every counted run is covered: a second browser's run joins the evidence ...
+    ff = await _auto_run(maker, sc, c["id"], {sc["cart"]: TestStatus.FAILED}, browser="firefox")
+    r = await client.post(url, headers=sc["SAM"], json={**body, "verdict": "reject"})
+    assert sorted(r.json()["run_ids"]) == sorted([new, ff])
+    # ... and one still in progress blocks an approval, however many runs there are.
+    live = await _auto_run(maker, sc, c["id"], {sc["pay"]: TestStatus.PASSED}, browser="webkit",
+                           status=TestStatus.RUNNING, hours_ago=0)
+    r = await client.post(url, headers=sc["SAM"], json=body)
+    assert r.status_code == 409 and str(live) in r.json()["detail"]
+    async with maker() as s:
+        await s.exec(text("UPDATE testrun SET status = 'PASSED' WHERE id = :i"), params={"i": live})
+        await s.commit()
     # Without a cycle run_ids is still required; another project's cycle is "not found".
     assert (await client.post(url, headers=sc["SAM"], json={"release_label": "x", "verdict": "approve"})).status_code == 400
     async with maker() as s:
@@ -371,7 +385,7 @@ async def test_sign_off_from_a_cycle(maker, client):
     # The sign-off outlives the cycle.
     assert (await client.delete(f"/api/test-cycles/{c['id']}", headers=sc["ADMIN"])).status_code == 200
     async with maker() as s:
-        assert len((await s.exec(select(ReleaseSignoff).where(ReleaseSignoff.cycle_id == c["id"]))).all()) == 1
+        assert len((await s.exec(select(ReleaseSignoff).where(ReleaseSignoff.cycle_id == c["id"]))).all()) == 2
 
 
 async def test_project_scoped_key_and_project_delete(maker, client):
@@ -400,3 +414,26 @@ async def test_project_scoped_key_and_project_delete(maker, client):
     async with maker() as s:
         assert (await s.exec(select(TestCycle).where(TestCycle.project_id == sc["project"]))).all() == []
         assert (await s.exec(select(TestCycleItem))).all() == []
+
+
+async def test_separate_approver_applies_to_a_cycle_sign_off(maker, client):
+    sc = await _scene(maker)
+    async with maker() as s:
+        ws = await s.get(Workspace, sc["ws"])
+        ws.require_separate_approver = True
+        s.add(ws)
+        await s.commit()
+    c = await _new_cycle(client, sc, case_ids=[sc["vat"], sc["pay"]])
+    await _auto_run(maker, sc, c["id"], {sc["pay"]: TestStatus.PASSED})
+    started = (await client.post(f"/api/test-cycles/{c['id']}/manual-runs", headers=sc["EVE"], json={})).json()
+    run_id = started["runs"][0]["id"]
+    run = (await client.get(f"/api/manual-runs/{run_id}", headers=sc["EVE"])).json()
+    await client.put(f"/api/manual-runs/{run_id}/results/{run['results'][0]['id']}", headers=sc["EVE"],
+                     json={"outcome": "passed"})
+    assert (await client.post(f"/api/manual-runs/{run_id}/complete", headers=sc["EVE"], json={})).status_code == 200
+    url = f"/api/projects/{sc['project']}/signoffs"
+    body = {"release_label": "2.4.0", "verdict": "approve", "cycle_id": c["id"]}
+    # Eve tested part of it, so she cannot be the one who approves; Sam can.
+    assert (await client.post(url, headers=sc["EVE"], json=body)).status_code == 403
+    r = await client.post(url, headers=sc["SAM"], json=body)
+    assert r.status_code == 200 and run_id in r.json()["run_ids"]

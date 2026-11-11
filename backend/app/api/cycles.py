@@ -292,13 +292,16 @@ def _cycle_out(cycle: TestCycle, states: Sequence[str], kinds: Sequence[str],
 
 
 async def evidence_run_ids(session: AsyncSession, cycle: TestCycle) -> List[int]:
-    """Runs holding the current result of at least one case of the cycle,
-    newest first — what a sign-off of the cycle covers."""
+    """Every run holding a counted result of a case of the cycle (the newest
+    per browser/device, for each case), newest first — what a sign-off of the
+    cycle covers. Never truncated: the sign-off's checks (runs finished,
+    separate approver) must see all of them."""
     items = (await _items(session, [cycle.id])).get(cycle.id, [])
     case_ids = [row[0].test_case_id for row in items]
     evidence = (await _evidence(session, cycle.project_id, [cycle.id], case_ids)).get(cycle.id, {})
-    run_ids = {c["run_id"] for c in (cy.classify(evidence.get(cid, [])) for cid in case_ids)
-               if c["run_id"] is not None}
+    run_ids: Set[int] = set()
+    for cid in case_ids:
+        run_ids.update(cy.classify(evidence.get(cid, []))["run_ids"])
     return sorted(run_ids, reverse=True)
 
 

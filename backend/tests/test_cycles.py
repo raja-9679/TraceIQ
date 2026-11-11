@@ -100,3 +100,10 @@ def test_root_suites_survive_broken_chains():
     assert roots[3] == 1 and roots[1] == 1
     assert roots[4] == 4            # parent outside the project: stops there
     assert roots[5] in (5, 6)       # a loop ends instead of spinning
+
+
+def test_every_counted_run_is_evidence_not_only_the_worst():
+    out = cy.classify([ev(1, "failed", browser="firefox", run=11), ev(2, "passed", run=12),
+                       ev(3, "failed", at=-5, run=13)])       # superseded on chromium
+    assert out["run_id"] == 11 and out["run_ids"] == [11, 12]
+    assert cy.classify([])["run_ids"] == []

@@ -1772,9 +1772,11 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   started by the UI: one `POST /runs` with `case_ids` + `cycle_id` per
   top-level suite, ≤500 cases each (`components/cycles/model.ts:
   automatedRunPlan`). Sign-off = `POST /projects/{id}/signoffs` with
-  `cycle_id`; `run_ids` may then be empty and is filled with the runs holding
-  each case's CURRENT result (`evidence_run_ids`, newest 50) — all existing
-  sign-off rules apply. Roles: viewer reads, editor everything else, project
+  `cycle_id`; `run_ids` must then be EMPTY (400 otherwise — a caller may not
+  pick the green runs) and the server covers every run holding a counted
+  result (`evidence_run_ids`, never truncated, so the "runs finished" and
+  separate-approver checks see all of them) — all existing sign-off rules
+  apply. A closed cycle can still be signed off. Roles: viewer reads, editor everything else, project
   admin deletes (items go, runs are unlinked, sign-offs stay). Assignee must
   be an active project editor (one 400 for every "can't"). A closed cycle
   refuses every change and new runs until reopened. `GET

@@ -152,7 +152,7 @@ A run started by a script joins a cycle when it names it. Add `cycle_id` to the 
 - **Only the cycle's own runs count.** A test's state comes from runs started from the cycle, or started elsewhere with the cycle named. A pass in an ordinary nightly run does not tick the test off.
 - **The newest result wins.** A later pass replaces an earlier failure, for each browser separately. A cancelled result, and a manual test nobody has recorded yet, count as nothing.
 - **Nothing is ticked by hand.** Progress is worked out from the results each time the page opens. If a run is deleted, its results leave the cycle with it.
-- **What a sign-off covers.** The runs that hold each test's current result (up to 50). Only a person can sign, not an API key. An approval is refused while one of those runs is still in progress. If the workspace requires a separate approver, someone who started or recorded those manual runs can't sign.
+- **What a sign-off covers.** Every run that holds a current result of one of the cycle's tests, on each browser. You don't pick them. Only a person can sign, not an API key. An approval is refused while one of those runs is still in progress. If the workspace requires a separate approver, someone who started or recorded those manual runs can't sign.
 - **Being assigned.** Open the bell (Notifications) and choose *Assigned to me*: cycles where you still have tests to run are listed there. No email or notification is sent when a test is assigned.
 - **Deleting a cycle** needs the project *admin* role. It removes the cycle and its list of tests; the runs, their results and the sign-offs are kept.
 - **Deleting a test** removes it from every cycle.

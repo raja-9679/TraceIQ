@@ -407,8 +407,8 @@ async def list_manual_runs(project_id: int, limit: int = 50,
 
 class SignoffIn(BaseModel):
     release_label: str = Field(min_length=1, max_length=mt.MAX_RELEASE_LABEL)
-    # Required, except with cycle_id: then the runs that hold each case's
-    # current result in the cycle are used.
+    # Required — except with cycle_id, where it must be empty: the server
+    # then covers every run that holds a counted result of the cycle.
     run_ids: List[int] = Field(default=[], max_length=mt.MAX_SIGNOFF_RUNS)
     cycle_id: Optional[int] = None
     case_ids: Optional[List[int]] = Field(default=None, max_length=1000)
@@ -468,12 +468,20 @@ async def create_signoff(project_id: int, body: SignoffIn, request: Request,
         cycle = await session.get(TestCycle, body.cycle_id)
         if not cycle or cycle.project_id != project.id:
             raise HTTPException(status_code=400, detail="Test cycle not found in this project")
+        # A cycle's sign-off rests on the cycle's own evidence, all of it:
+        # every run holding a counted result, never a caller's pick and never
+        # a truncated list — the "runs finished" and separate-approver checks
+        # below must see every run the record will claim to cover. (The
+        # MAX_SIGNOFF_RUNS limit is on what a caller may list by hand.)
+        if run_ids:
+            raise HTTPException(status_code=400, detail=(
+                "With cycle_id, leave run_ids out: a cycle's sign-off covers the runs that "
+                "hold its tests' current results"))
+        from app.api.cycles import evidence_run_ids
+        run_ids = await evidence_run_ids(session, cycle)
         if not run_ids:
-            from app.api.cycles import evidence_run_ids
-            run_ids = (await evidence_run_ids(session, cycle))[:mt.MAX_SIGNOFF_RUNS]
-            if not run_ids:
-                raise HTTPException(status_code=409, detail=(
-                    "Nothing in this cycle has a result yet — there is nothing to sign off"))
+            raise HTTPException(status_code=409, detail=(
+                "Nothing in this cycle has a result yet — there is nothing to sign off"))
     if not run_ids:
         raise HTTPException(status_code=400, detail="run_ids is required")
     runs = list((await session.exec(select(TestRun).where(TestRun.id.in_(run_ids)))).all())

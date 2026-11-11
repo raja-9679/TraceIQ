@@ -75,11 +75,14 @@ def classify(rows: Iterable[Evidence]) -> Dict[str, Any]:
             newest[key] = (e, state)
     if not newest:
         return {"status": NOT_RUN, "run_id": None, "result_id": None, "at": None,
-                "tester_id": None, "configurations": 0}
+                "tester_id": None, "configurations": 0, "run_ids": []}
     # Worst state; among equals the newest row is the one to open.
     e, state = max(newest.values(), key=lambda p: (_SEVERITY[p[1]], _recency(p[0])))
     return {"status": state, "run_id": e.run_id, "result_id": e.result_id, "at": e.at,
-            "tester_id": e.tester_id, "configurations": len(newest)}
+            "tester_id": e.tester_id, "configurations": len(newest),
+            # Every run that holds a counted (newest-per-configuration) result:
+            # what a sign-off of the cycle rests on, not only the worst one.
+            "run_ids": sorted({row.run_id for row, _ in newest.values()})}
 
 
 def summarize(states: Sequence[str]) -> Dict[str, Any]:
