@@ -10,38 +10,93 @@ it belongs here rather than in a chat history.
 
 ---
 
-## Resume here (2026-11-11, office laptop) — read this first
+## Resume here (2026-11-11 evening, office laptop) — read this first
 
-**State.** Item 4 (test cycles) is built on `feat/test-cycles` (off
-`feature/redesign-a`), pushed, NOT merged — the owner says "merge" and it is
-fast-forwarded. The local stack (`~/traceiq-test`, http://localhost:8080) runs
-images built from that branch; its database is at migration `e172b3c4d618`.
-Verification: backend unit 2644 passed; live `test_cycles_db`,
+**State.** Everything is on `feature/redesign-a`, pushed to origin. Item 4
+(test cycles) is merged (fast-forward of `feat/test-cycles`, which can be
+deleted). Working tree clean. Nothing is on `main`. Migration head is
+`e172b3c4d618`.
+
+**Done today.**
+- **Test cycles** — CLAUDE.md → "Test cycles". Page: Releases → Test cycles
+  (`/test-cycles`, `/test-cycles/:id`). Guide page + pictures + video added.
+- **kombu pin** — a fresh backend image resolved kombu 5.7, whose Redis
+  transport refuses redis-py 5, and every Celery process crash-looped while
+  the API stayed healthy (runs sat pending). `kombu==5.6.2` is pinned in
+  `backend/requirements.txt`. Images built from source before this pin and
+  after kombu 5.7 came out have the fault.
+- The automated security review raised two findings on the cycle sign-off
+  (evidence list cut at 50; caller could pick its own runs). Both valid, both
+  fixed (`48ad112`).
+
+**Verification.** Backend unit 2645 passed; live `test_cycles_db` (8),
 `test_demo_seed_cycles_db`, manual, purge, entity delete, erasure, RLS, tenant
-isolation, failure discussion and all demo-seed suites passed;
+isolation, failure discussion and every demo-seed suite passed;
 `./run-tests-live.sh --migrations` ok; frontend 296 passed, tsc clean. In a
-real browser on the stack: create / add / assign / edit / close / reopen /
-delete, and by API a real worker run + a manual run flowing into a cycle and a
-sign-off from it. The WHOLE live suite was not re-run.
+real browser on the local stack: create / add tests / assign / edit / close /
+reopen / delete. Through the API on the stack: a real worker run and a manual
+run flowed into a cycle and a sign-off was recorded from it. NOT done: the
+whole live suite; pressing "Start" in the "Run automated tests" dialog (the
+run was started through the API with the same body).
 
-**What it is.** CLAUDE.md → "Test cycles". Page: Releases → Test cycles.
+**Continuing on another laptop.**
+1. `git fetch origin && git checkout feature/redesign-a && git pull` (never
+   pull the old `feature/enterprise-auth-ai` on origin — see the older notes).
+2. Rebuild ALL images there — the code needs migration `e172b3c4d618` and the
+   kombu pin; an old backend image against a migrated DB (or the reverse)
+   will not work:
+   ```bash
+   docker build -t ghcr.io/raja-9679/traceiq-backend:dev          -f backend/Dockerfile backend
+   docker build -t ghcr.io/raja-9679/traceiq-frontend:dev         -f frontend/Dockerfile frontend
+   docker build -t ghcr.io/raja-9679/traceiq-execution-worker:dev -f execution-engine/Dockerfile.worker execution-engine
+   # then, in that laptop's stack folder (home laptop: ~/traceiq-stack, with
+   # -f docker-compose.local.yml as well — see "Local stack on this laptop" below)
+   docker compose -f docker-compose.community.yml --env-file .env up -d
+   ```
+   The backend entrypoint migrates the DB. Check afterwards that the three
+   `celery_*` containers stay "Up" (not "Restarting").
+3. Tests: `backend/run-tests.sh` rebuilds its test image once (the
+   requirements hash changed with the kombu pin). Frontend: `npm ci`, and
+   `npm install --no-save openapi-typescript@7.13.0` before `npm run gen:api`.
+4. That laptop's database is its own. Its demo workspace will NOT have a test
+   cycle unless the demo is re-created (`DELETE` then `POST /demo-workspace`,
+   which now seeds one via `demo_seed/cycles.py`). On THIS laptop the docs
+   account's demo (project 15) got its cycle rows by hand; the guide pictures
+   in the repo were taken from it and do not need re-taking.
+5. `e2e/.auth/` (docs account credentials) is gitignored and stays on this
+   laptop; a capture run elsewhere signs up a new docs account with a fresh
+   demo.
 
-**Found on the way.** A fresh backend image resolved kombu 5.7 and every
-Celery process crash-looped (API still healthy, runs stuck pending). Pinned
-`kombu==5.6.2` in `backend/requirements.txt`. Any image built between the
-kombu 5.7 release and this pin has the same fault — relevant if images were
-published recently.
+**Next — the remaining build order.**
+5. Import from Selenium / Cypress / Postman / spreadsheets (today: Playwright
+   import + JUnit results only). Start by reading the existing Playwright
+   import (`/import-playwright`, its API and parser) — the new importers
+   should produce the same step JSON and go through the same review/creation
+   path, not a second one.
+6. CSV/PDF export on every report + saved filters.
+7. GitLab / Azure DevOps / Jenkins at the level of the GitHub Action.
+8. Database-check step; geolocation / timezone / permission emulation.
+9. Opt-in product usage analytics.
+10. Business items (not code): pen test, pricing + trial, final licence,
+    real-vendor checks (`docs/REAL_SERVICE_CHECKLIST.md`).
+Way of working: one `feat/…` branch per item off `feature/redesign-a`;
+verify; push; report; the owner says "merge" → fast-forward and push. Commits
+carry `[skip ci]`, no Claude trailers. The automated security review comments
+after a push; treat its findings as real until checked.
 
-**Open / not verified.**
-- "Run automated tests" was pressed only up to its dialog in the browser; the
-  run itself was started through the API with the same body.
-- The docs demo workspace got its cycle rows by hand (same rows as
-  `demo_seed/cycles.py`); its dates are from October, so the cycle reads
-  "last tested 10/24" against a due date of 2026-11-13.
-- No MCP / CLI support for cycles; no notification or email on assignment.
-
-**Next:** item 5 (import from Selenium / Cypress / Postman / spreadsheets),
-then 6-9 below.
+**Open for the owner / not built.**
+- Test cycles: should a CLOSED cycle refuse a sign-off? (Allowed today.) No
+  MCP / CLI tools, no cloning a cycle, no gate rule on cycle completion, no
+  notification or email when a test is assigned.
+- Guide: every picture that shows the sidebar now lacks both the
+  Notifications row and the "Test cycles" row; a full re-capture needs the
+  docs demo rebuilt first (`info/GUIDE_FOLLOWUPS.md`, last two sections). The
+  Release sign-off guide page does not yet say a sign-off can be made from a
+  cycle.
+- Everything under "Open / not verified" in the 2026-11-10 section below
+  still stands (recorder never run in desktop Chrome or on a worker; no real
+  SMTP send; Worker fleet / On-call tabs; iTop "Test connection"; C5
+  force-push and credential rotation).
 
 ---
 
