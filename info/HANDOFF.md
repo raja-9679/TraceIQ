@@ -10,7 +10,42 @@ it belongs here rather than in a chat history.
 
 ---
 
-## Resume here (2026-11-10, office laptop) — read this first
+## Resume here (2026-11-11, office laptop) — read this first
+
+**State.** Item 4 (test cycles) is built on `feat/test-cycles` (off
+`feature/redesign-a`), pushed, NOT merged — the owner says "merge" and it is
+fast-forwarded. The local stack (`~/traceiq-test`, http://localhost:8080) runs
+images built from that branch; its database is at migration `e172b3c4d618`.
+Verification: backend unit 2644 passed; live `test_cycles_db`,
+`test_demo_seed_cycles_db`, manual, purge, entity delete, erasure, RLS, tenant
+isolation, failure discussion and all demo-seed suites passed;
+`./run-tests-live.sh --migrations` ok; frontend 296 passed, tsc clean. In a
+real browser on the stack: create / add / assign / edit / close / reopen /
+delete, and by API a real worker run + a manual run flowing into a cycle and a
+sign-off from it. The WHOLE live suite was not re-run.
+
+**What it is.** CLAUDE.md → "Test cycles". Page: Releases → Test cycles.
+
+**Found on the way.** A fresh backend image resolved kombu 5.7 and every
+Celery process crash-looped (API still healthy, runs stuck pending). Pinned
+`kombu==5.6.2` in `backend/requirements.txt`. Any image built between the
+kombu 5.7 release and this pin has the same fault — relevant if images were
+published recently.
+
+**Open / not verified.**
+- "Run automated tests" was pressed only up to its dialog in the browser; the
+  run itself was started through the API with the same body.
+- The docs demo workspace got its cycle rows by hand (same rows as
+  `demo_seed/cycles.py`); its dates are from October, so the cycle reads
+  "last tested 10/24" against a due date of 2026-11-13.
+- No MCP / CLI support for cycles; no notification or email on assignment.
+
+**Next:** item 5 (import from Selenium / Cypress / Postman / spreadsheets),
+then 6-9 below.
+
+---
+
+## Resume here (2026-11-10, office laptop)
 
 **State.** Everything is on `feature/redesign-a`, pushed to origin (head
 `20fa5de` plus this note). Working tree clean. The local stack

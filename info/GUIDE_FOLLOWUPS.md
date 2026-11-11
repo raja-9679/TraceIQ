@@ -152,3 +152,9 @@ Still open / new this round:
 - The sidebar gained a **Notifications** row under Ask TraceIQ: every guide picture that shows the sidebar predates it. Needs a full re-capture.
 - A full re-capture needs the docs account's demo workspace rebuilt first: its data is from 2026-10-26, so Overview's 14-day chart is empty (today-overview.spec.ts fails at the bar hover), Release readiness reads "Not ready" on evidence age, and the "Add a todo" quarantine was re-created by hand until 2026-11-24. The demo seed now also adds a discussed failure (demo_seed/collab.py); the current docs demo got the same rows by hand.
 - Overview scrolls sideways at phone width (existing, not from the Get started card). Overview's tiles count runs of all projects while the card is per project.
+
+### 2026-11-11 (test cycles)
+- New page Releases → Test cycles, captured from the current docs demo (cycle rows added by hand to match demo_seed/cycles.py). The sidebar in every OTHER picture now also lacks the "Test cycles" row.
+- The demo cycle's results date from October while its due date is 2026-11-13; a rebuilt demo will line these up.
+- Release sign-off's guide page does not yet mention that a sign-off can be made from a cycle (its "History" link lands there).
+

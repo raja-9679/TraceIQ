@@ -1750,6 +1750,45 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   and two notifications. Guide: Runs → "Working on a failure together".
   Open: every guide picture that shows the sidebar predates the Notifications
   row (a full re-capture needs the demo rebuilt); no @mentions, no email.
+- **Test cycles (2026-11-11)** — migration `e172b3c4d618` (`testcycle`,
+  `testcycleitem`, `testrun.cycle_id` FK, `releasesignoff.cycle_id` soft;
+  project-keyed RLS policies; PURGE_PLAN, entity_delete ON_DELETE, erasure).
+  API `app/api/cycles.py`, rules `app/services/cycles.py` (pure). A cycle is a
+  round of testing for a release: a case list (manual + automated, ≤2000),
+  an optional assignee per case, and the runs made for it. **Nothing about
+  progress is stored**: a case's state is read from its results in runs with
+  `cycle_id` = this cycle (this project, not validation runs) — rows without
+  a verdict ignored (cancelled, unrecorded manual), newest per browser/device,
+  worst wins: failed > blocked (manual blocked, automated ERROR/TIMED_OUT) >
+  skipped > passed; none = `not_run`. Manual fields are pulled from
+  `result_payload` in SQL (`->>`), never the whole payload. Runs join through
+  the ordinary paths: `POST /api/runs` body `cycle_id`, `POST /manual-runs`
+  body `cycle_id` (`manual_testing.open_cycle`: same project, 400 "not found"
+  otherwise; closed → 409). `POST /test-cycles/{id}/manual-runs {scope:
+  remaining|all, mine_only}` starts one manual run per TOP-LEVEL suite
+  (`create_manual_run`, shared with POST /manual-runs) and leaves out cases
+  still unrecorded in a live manual run of the cycle (`already_open`), so a
+  double click does not hand a case to two testers. Automated cases are
+  started by the UI: one `POST /runs` with `case_ids` + `cycle_id` per
+  top-level suite, ≤500 cases each (`components/cycles/model.ts:
+  automatedRunPlan`). Sign-off = `POST /projects/{id}/signoffs` with
+  `cycle_id`; `run_ids` may then be empty and is filled with the runs holding
+  each case's CURRENT result (`evidence_run_ids`, newest 50) — all existing
+  sign-off rules apply. Roles: viewer reads, editor everything else, project
+  admin deletes (items go, runs are unlinked, sign-offs stay). Assignee must
+  be an active project editor (one 400 for every "can't"). A closed cycle
+  refuses every change and new runs until reopened. `GET
+  /test-cycles/assigned-to-me` (humans only, access re-checked) feeds the
+  bell drawer's "Assigned to me"; no notification row is written on
+  assignment. Audited as `test_cycle` with the workspace named explicitly.
+  UI `/test-cycles` + `/test-cycles/:id` (Releases); demo seed
+  `demo_seed/cycles.py` reuses the demo's existing runs. Guide: Releases →
+  Test cycles. Not built: MCP/CLI tools, cycle templates/cloning, a gate
+  check on cycle completion, per-case "running" state for automated runs.
+- **kombu pin (2026-11-11)** — `celery==5.3.6` only bounds kombu `<6`; a fresh
+  image build resolved kombu 5.7, whose Redis transport needs redis-py ≥ 6.1,
+  and every Celery process crash-looped (`VersionMismatch`) while the API
+  looked healthy. `kombu==5.6.2` is pinned; bump kombu and redis together.
 - **Get started checklist (2026-11-10)** — no migration, nothing stored.
   `GET /api/projects/{id}/getting-started` (in `app/api/onboarding.py`; viewer;
   project-scoped keys honoured; typed `GettingStarted`) answers each step from

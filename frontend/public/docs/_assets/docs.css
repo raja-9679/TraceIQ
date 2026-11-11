@@ -37,6 +37,9 @@ a:hover { text-decoration-thickness: 2px; }
 img, video { max-width: 100%; display: block; }
 code, kbd { font-family: var(--mono); font-size: .88em; }
 code { background: var(--line-soft); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+/* A command to copy: scrolls sideways on a phone instead of widening the page. */
+pre { margin: 14px 0; padding: 14px 16px; overflow-x: auto; background: var(--line-soft); border: 1px solid var(--line); border-radius: 14px; line-height: 1.55; }
+pre code { background: none; border: 0; padding: 0; white-space: pre; }
 kbd { background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 0 6px; }
 
 /* ---------- top bar ---------- */

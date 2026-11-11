@@ -20,6 +20,7 @@ window.DOCS_NAV = [
     pages: [
       { name: 'Quality gate', slug: 'releases/quality-gate', ready: true },
       { name: 'Release readiness', slug: 'releases/release-readiness', ready: true },
+      { name: 'Test cycles', slug: 'releases/test-cycles', ready: true },
       { name: 'Release sign-off', slug: 'releases/release-signoff', ready: true },
       { name: 'Requirements', slug: 'releases/requirements', ready: true },
       { name: 'Traceability', slug: 'releases/traceability', ready: true },

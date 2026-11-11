@@ -167,9 +167,13 @@ Requirements (such as a ticket `DEMO-101`) that have tests linked to them, judge
 
 ## Related pages
 
+> **Test cycles**
+>
+> The next page in this guide: plan a round of testing for a release and follow who has tested what.
+
 > **Release sign-off**
 >
-> The next page in this guide: a person's recorded approval of a release, which this answer can require.
+> A person's recorded approval of a release, which this answer can require.
 
 > **Quality gate**
 >
